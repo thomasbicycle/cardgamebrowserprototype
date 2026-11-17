@@ -49,3 +49,7 @@ export function useStore(): Store {
 }
 
 export const money = (n: number) => `$${Math.round(n).toLocaleString('en-US')}`;
+export const clock = (sec: number) => {
+  const t = Math.ceil(sec);
+  return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
+};

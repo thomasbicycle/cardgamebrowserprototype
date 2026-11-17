@@ -16,4 +16,4 @@ npm run build   # static build in dist/ (wraps with Capacitor as-is)
 
 Add `?debug=1` to the URL, or tick the box on the title screen, to see hidden values.
 
-Milestones: 1 buy loop (done) · 2 grading, wholesale, inventory · 3 display case · 4 calendar, drift, recap, save · 5 polish, fake ads.
+Milestones: 1 buy loop (done) · 2 grading, wholesale, inventory (done) · 3 display case · 4 calendar, drift, recap, save · 5 polish, fake ads.

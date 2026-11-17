@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'preact/hooks';
 import { CONFIG } from '../../config';
 import { cardDef } from '../../core/cards';
-import { dayName, weekOf, wholesaleValue, type GameState } from '../../core/game';
+import { dayName, weekOf, type GameState } from '../../core/game';
 import { DebugPanel, HagglePanel, SalesPanel } from '../components/Panels';
+import { companyOf } from '../components/Slab';
 import { ZoomCard } from '../components/ZoomCard';
-import { dispatch, money, newGame, quitGame, setDebug, useStore } from '../store';
+import { clock, dispatch, money, newGame, quitGame, setDebug, useStore } from '../store';
+import { GradeReturns, Inventory } from './Inventory';
 
 export function Title() {
   const { debug } = useStore();
@@ -12,7 +14,7 @@ export function Title() {
   return (
     <div class="screen center">
       <h1>Card Show<br />Hustle</h1>
-      <p class="muted">Buy low. Trust your eye. Prototype build · Milestone 1.1</p>
+      <p class="muted">Buy low. Trust your eye. Prototype build · Milestone 2</p>
       <button class="btn primary big" onClick={() => newGame(seed)}>New game</button>
       <label class="field">Seed (optional, repeats a run)
         <input value={seed} onInput={(e) => setSeed((e.target as HTMLInputElement).value)} placeholder="random" />
@@ -22,29 +24,33 @@ export function Title() {
   );
 }
 
-function Hud({ game }: { game: GameState }) {
-  const t = Math.ceil(game.show?.timeLeft ?? 0);
-  const frac = (game.show?.timeLeft ?? 0) / CONFIG.show.dayLengthSec;
+function Hud({ game, onInventory }: { game: GameState; onInventory: () => void }) {
+  const t = game.show?.timeLeft ?? 0;
   return (
     <header class="hud">
       <div class="hud-row">
         <span>Wk {weekOf(game.day)} · {dayName(game.day).slice(0, 3)}</span>
-        <span class={t <= 30 ? 'clock low' : 'clock'}>{Math.floor(t / 60)}:{String(t % 60).padStart(2, '0')}</span>
-        <span>🃏 {game.inventory.length}</span>
+        <span class={t <= 30 ? 'clock low' : 'clock'}>{clock(t)}</span>
+        <button class="hud-inv" onClick={onInventory}>🃏 {game.inventory.length}</button>
         <b class="cash">{money(game.cash)}</b>
       </div>
-      <div class="bar"><div style={{ width: `${frac * 100}%` }} /></div>
+      <div class="bar"><div style={{ width: `${(t / CONFIG.show.dayLengthSec) * 100}%` }} /></div>
     </header>
   );
 }
 
 export function Morning({ game }: { game: GameState }) {
+  const [inv, setInv] = useState(false);
+  if (game.returns.length) return <GradeReturns game={game} />;
+  if (inv) return <Inventory game={game} onClose={() => setInv(false)} />;
+  const away = game.inventory.filter((o) => o.grading).length;
   return (
     <div class="screen center">
       <p class="muted">Week {weekOf(game.day)}</p>
       <h1>{dayName(game.day)}</h1>
-      <p>Cash {money(game.cash)} · {game.inventory.length} cards in stock</p>
+      <p>Cash {money(game.cash)} · {game.inventory.length} cards{away ? ` (${away} at grading)` : ''}</p>
       <button class="btn primary big" onClick={() => dispatch({ type: 'startDay' })}>Open the table</button>
+      <button class="btn big" onClick={() => setInv(true)}>🃏 Inventory</button>
       <button class="btn ghost" onClick={quitGame}>Quit to title</button>
     </div>
   );
@@ -53,6 +59,7 @@ export function Morning({ game }: { game: GameState }) {
 export function Show({ game }: { game: GameState }) {
   const { debug } = useStore();
   const [tab, setTab] = useState<'deal' | 'sales' | 'debug'>('deal');
+  const [inv, setInv] = useState(false);
   const enc = game.show?.encounter ?? null;
 
   useEffect(() => {
@@ -67,9 +74,11 @@ export function Show({ game }: { game: GameState }) {
   }, []);
   useEffect(() => setTab('deal'), [enc?.card.uid]);
 
+  // The clock keeps running while you look through stock.
+  if (inv) return <Inventory game={game} onClose={() => setInv(false)} />;
   return (
     <div class="screen">
-      <Hud game={game} />
+      <Hud game={game} onInventory={() => setInv(true)} />
       {!enc ? (
         <div class="waiting">
           <div class="walker">🚶</div>
@@ -99,11 +108,17 @@ export function Show({ game }: { game: GameState }) {
   );
 }
 
+const signed = (n: number) => {
+  const r = Math.round(n);
+  return <b class={r >= 0 ? 'pos' : 'neg'}>{r >= 0 ? '+' : '−'}{money(Math.abs(r))}</b>;
+};
+
 export function DayEnd({ game }: { game: GameState }) {
-  const { bought, seen, passed, walked } = game.log;
+  const [inv, setInv] = useState(false);
+  if (inv) return <Inventory game={game} onClose={() => setInv(false)} />;
+  const { bought, sold, graded, seen, passed, walked, cashStart } = game.log;
   const spent = bought.reduce((s, b) => s + b.paid, 0);
   const edge = bought.reduce((s, b) => s + b.trueValue - b.paid, 0);
-  const stockValue = game.inventory.reduce((s, o) => s + wholesaleValue(game, o), 0);
   return (
     <div class="screen scroll">
       <h2>{dayName(game.day)} recap · Week {weekOf(game.day)}</h2>
@@ -113,27 +128,45 @@ export function DayEnd({ game }: { game: GameState }) {
         <div><b>{passed}</b>passed</div>
         <div><b>{walked}</b>walked</div>
       </div>
-      <p>Spent <b>{money(spent)}</b> · value vs paid <b class={edge >= 0 ? 'pos' : 'neg'}>{edge >= 0 ? '+' : '−'}{money(Math.abs(edge))}</b></p>
+      <p>Cash {money(cashStart)} → <b>{money(game.cash)}</b> ({signed(game.cash - cashStart)})</p>
+      {bought.length > 0 && <p>Spent <b>{money(spent)}</b> · value vs paid {signed(edge)}</p>}
       <div class="recap-list">
-        {bought.map((b) => {
-          const d = b.trueValue - b.paid;
-          return (
-            <div class="recap-row">
-              <span>{cardDef(b.cardId).name} <i class="tier">{b.tier}</i></span>
-              <span class="muted">paid {money(b.paid)}</span>
-              <span>worth {money(b.trueValue)}</span>
-              <b class={d >= 0 ? 'pos' : 'neg'}>{d >= 0 ? '+' : '−'}{money(Math.abs(d))}</b>
-            </div>
-          );
-        })}
+        {bought.map((b) => (
+          <div class="recap-row">
+            <span>{cardDef(b.cardId).name} <i class="tier">{b.tier}</i></span>
+            <span class="muted">paid {money(b.paid)}</span>
+            <span>worth {money(b.trueValue)}</span>
+            {signed(b.trueValue - b.paid)}
+          </div>
+        ))}
         {bought.length === 0 && <p class="muted">You didn't buy anything today.</p>}
       </div>
-      <p class="muted">Raw market value shown. Grading and real selling arrive in Milestone 2.</p>
-      {game.inventory.length > 0 && (
-        <button class="btn" onClick={() => dispatch({ type: 'wholesaleAll' })}>
-          Wholesale all {game.inventory.length} cards for {money(stockValue)} (temporary)
-        </button>
+      {sold.length > 0 && (
+        <>
+          <h3>Sold</h3>
+          <div class="recap-list">
+            {sold.map((s) => (
+              <div class="recap-row">
+                <span>{cardDef(s.cardId).name} {s.slab && <i class="tier slabbed">{companyOf(s.slab.company).name} {s.slab.grade}</i>}</span>
+                <span class="muted">cost {money(s.cost)}</span>
+                <span>{s.via} {money(s.price)}</span>
+                {signed(s.price - s.cost)}
+              </div>
+            ))}
+          </div>
+        </>
       )}
+      {graded.length > 0 && (
+        <>
+          <h3>Sent for grading</h3>
+          <div class="recap-list">
+            {graded.map((g) => (
+              <div class="recap-row two"><span>{cardDef(g.cardId).name} → {g.company}</span><span class="muted">fee {money(g.fee)}</span></div>
+            ))}
+          </div>
+        </>
+      )}
+      <button class="btn big" onClick={() => setInv(true)}>🃏 Inventory ({game.inventory.length})</button>
       <button class="btn primary big" onClick={() => dispatch({ type: 'nextDay' })}>Next show day →</button>
     </div>
   );

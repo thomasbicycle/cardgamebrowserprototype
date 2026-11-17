@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { CONFIG } from '../src/config';
 import { conditionFromWear,generateFlaws, rollCondition, tierId } from '../src/core/condition';
-import { createGame, reduce, salesFor, type Action } from '../src/core/game';
+import { calendarDay, createGame, marketValue, reduce, rollGrade, salesFor, showDayOn, wholesaleValue, type Action, type GameState } from '../src/core/game';
 import { initMarket } from '../src/core/market';
 import { Rng } from '../src/core/rng';
 import { generateEncounter, makeOffer } from '../src/core/seller';
@@ -171,5 +171,108 @@ describe('game', () => {
     expect(g.log.bought.length).toBe(g.inventory.length);
     expect(g.cash).toBe(CONFIG.startingCash - g.inventory.reduce((s, o) => s + o.paid, 0));
     expect(g.cash).toBeGreaterThanOrEqual(0);
+  });
+});
+
+describe('grading, returns and wholesale', () => {
+  /** A game with a few cards in stock and the show day over. */
+  const stocked = (seed: number) => {
+    const g = createGame(seed);
+    g.cash = 1e6;
+    const acts: Action[] = [{ type: 'startDay' }];
+    for (let i = 0; i < 400; i++) acts.push({ type: 'tick', dt: 1 }, { type: 'payAsk' }, { type: 'next' });
+    for (const a of acts) reduce(g, a);
+    expect(g.inventory.length).toBeGreaterThan(2);
+    return g;
+  };
+  const advance = (g: GameState, days: number) => {
+    for (let i = 0; i < days; i++) {
+      reduce(g, { type: 'nextDay' });
+      reduce(g, { type: 'ackReturns' });
+      reduce(g, { type: 'startDay' });
+      while (g.phase === 'show') reduce(g, { type: 'tick', dt: 1000 });
+    }
+  };
+
+  it('grades land near true condition', () => {
+    const rng = new Rng(4);
+    let off = 0;
+    for (let i = 0; i < 2000; i++) {
+      const overall = rng.range(1, 10);
+      const gr = rollGrade(rng, overall);
+      expect(gr).toBeGreaterThanOrEqual(1);
+      expect(gr).toBeLessThanOrEqual(10);
+      expect(Math.abs(gr - overall)).toBeLessThan(2);
+      if (gr !== Math.round(overall)) off++;
+    }
+    expect(off / 2000).toBeGreaterThan(0.1); // graders are not perfectly predictable
+    expect(off / 2000).toBeLessThan(0.5);
+  });
+
+  it('charges the fee, returns on time, and the slab is worth the graded price', () => {
+    const g = stocked(21);
+    const [a, b] = g.inventory;
+    const cash = g.cash;
+    reduce(g, { type: 'grade', uid: a.card.uid, company: 'pra', service: 'fast' });
+    reduce(g, { type: 'grade', uid: b.card.uid, company: 'cgx', service: 'value' });
+    reduce(g, { type: 'grade', uid: a.card.uid, company: 'cgx', service: 'value' }); // already submitted: ignored
+    expect(g.cash).toBe(cash - 115);
+    expect(a.fees).toBe(100);
+    expect(g.log.graded.length).toBe(2);
+    // Cannot wholesale a card that is at the grader.
+    reduce(g, { type: 'wholesale', uids: [a.card.uid] });
+    expect(g.inventory).toContain(a);
+
+    const praDue = a.grading!.returnsOn, cgxDue = b.grading!.returnsOn;
+    const praGrade = a.grading!.grade;
+    expect(praDue - calendarDay(g.day)).toBeLessThanOrEqual(5);
+    expect(cgxDue - calendarDay(g.day)).toBeGreaterThanOrEqual(18);
+    // PRA is always back by the next show day.
+    reduce(g, { type: 'nextDay' });
+    if (g.day % 2 === 1) { reduce(g, { type: 'startDay' }); while (g.phase === 'show') reduce(g, { type: 'tick', dt: 1000 }); reduce(g, { type: 'nextDay' }); }
+    expect(g.day).toBe(showDayOn(praDue));
+    expect(a.slab?.grade).toBe(praGrade);
+    expect(a.grading).toBeUndefined();
+    expect(g.returns).toContain(a.card.uid);
+    expect(b.slab).toBeUndefined();
+    expect(wholesaleValue(g, a)).toBe(Math.max(1, Math.floor(marketValue(g, a) * CONFIG.wholesale.graded)));
+
+    reduce(g, { type: 'ackReturns' });
+    advance(g, 8);
+    expect(b.slab).toBeDefined();
+    expect(g.day).toBeGreaterThanOrEqual(showDayOn(cgxDue));
+  });
+
+  it('cannot grade without the fee in cash', () => {
+    const g = stocked(22);
+    g.cash = 50;
+    const o = g.inventory[0];
+    reduce(g, { type: 'grade', uid: o.card.uid, company: 'pra', service: 'fast' });
+    expect(o.grading).toBeUndefined();
+    expect(g.cash).toBe(50);
+  });
+
+  it('wholesale pays 80% of raw market and removes the cards', () => {
+    const g = stocked(23);
+    const cash = g.cash;
+    const uids = g.inventory.map((o) => o.card.uid);
+    const expected = g.inventory.reduce((s, o) => s + Math.max(1, Math.floor(marketValue(g, o) * CONFIG.wholesale.raw)), 0);
+    reduce(g, { type: 'wholesale', uids });
+    expect(g.inventory.length).toBe(0);
+    expect(g.cash).toBe(cash + expected);
+    expect(g.log.sold.length).toBe(uids.length);
+  });
+
+  it('every slab has at least 5 comps for its company and grade', () => {
+    const g = createGame(9);
+    for (const company of ['pra', 'cgx']) {
+      for (const grade of [10, 9, 8, 7, 5, 3, 1]) {
+        const sales = salesFor(g, 'pebblit', [{ company, grade }]);
+        const name = CONFIG.grading.companies.find((c) => c.id === company)!.name;
+        expect(sales.filter((s) => s.company === name && s.grade === grade).length).toBeGreaterThanOrEqual(5);
+        // Topping up one slab never changes the rest of the history.
+        expect(sales.filter((s) => s.kind === 'raw')).toEqual(salesFor(g, 'pebblit').filter((s) => s.kind === 'raw'));
+      }
+    }
   });
 });

@@ -12,10 +12,12 @@ interface Props {
   card: CardInstance;
   side: 'front' | 'back';
   viewBox?: string;
+  /** Draw inside a parent SVG (e.g. a slab) at 0,0 in card units instead of as its own element. */
+  nested?: boolean;
 }
 
 /** Draws one physical card, flaws included. Everything is vector so it stays sharp when zoomed. */
-export function CardView({ card, side, viewBox }: Props) {
+export function CardView({ card, side, viewBox, nested }: Props) {
   const def = cardDef(card.cardId);
   const flaws = useMemo(() => generateFlaws(card), [card.seed]);
   const [light, mid, dark] = PALETTE[def.element];
@@ -29,7 +31,10 @@ export function CardView({ card, side, viewBox }: Props) {
   const holo = def.rarity === 'rare' || def.rarity === 'ultra';
 
   return (
-    <svg viewBox={viewBox ?? `0 0 ${CARD_W} ${CARD_H}`} class="card-svg" preserveAspectRatio="xMidYMid meet">
+    <svg
+      viewBox={viewBox ?? `0 0 ${CARD_W} ${CARD_H}`}
+      {...(nested ? { width: CARD_W, height: CARD_H, overflow: 'visible' } : { class: 'card-svg', preserveAspectRatio: 'xMidYMid meet' })}
+    >
       <defs>
         <clipPath id={`${id}clip`}><rect width={CARD_W} height={CARD_H} rx={CARD_R} /></clipPath>
         <linearGradient id={`${id}bg`} x1="0" y1="0" x2="0" y2="1">

@@ -1,22 +1,26 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { CARD_H, CARD_W, type CardInstance } from '../../core/condition';
+import type { Slab } from '../../core/game';
 import { CardView } from './CardView';
+import { SLAB, SlabView } from './Slab';
 
 interface View { s: number; cx: number; cy: number }
-const HOME: View = { s: 1, cx: CARD_W / 2, cy: CARD_H / 2 };
 const MAX_ZOOM = 8;
 
-const clampView = (v: View): View => {
-  const s = Math.min(MAX_ZOOM, Math.max(1, v.s));
-  if (s === 1) return HOME;
-  return { s, cx: Math.min(CARD_W, Math.max(0, v.cx)), cy: Math.min(CARD_H, Math.max(0, v.cy)) };
-};
-
 /** Card inspector: pinch or wheel to zoom, drag to pan, double-tap to jump in, flip for the back. */
-export function ZoomCard({ card }: { card: CardInstance }) {
+export function ZoomCard({ card, slab }: { card: CardInstance; slab?: Slab }) {
+  // Area that can be looked at, in card units: the card, or the whole slab around it.
+  const B = slab ? SLAB : { x: 0, y: 0, w: CARD_W, h: CARD_H };
+  const HOME: View = { s: 1, cx: B.x + B.w / 2, cy: B.y + B.h / 2 };
+  const clampView = (v: View): View => {
+    const s = Math.min(MAX_ZOOM, Math.max(1, v.s));
+    if (s === 1) return HOME;
+    return { s, cx: Math.min(B.x + B.w, Math.max(B.x, v.cx)), cy: Math.min(B.y + B.h, Math.max(B.y, v.cy)) };
+  };
   const [side, setSide] = useState<'front' | 'back'>('front');
   const [full, setFull] = useState(false);
   const [view, setView] = useState<View>(HOME);
+  useEffect(() => setView(HOME), [!!slab]);
   const [size, setSize] = useState({ w: 300, h: 300 });
   const el = useRef<HTMLDivElement>(null);
   const ptrs = useRef(new Map<number, { x: number; y: number }>());
@@ -31,7 +35,7 @@ export function ZoomCard({ card }: { card: CardInstance }) {
   }, []);
 
   // Card units visible across the pane at zoom 1 (card plus a small margin).
-  const baseW = Math.max(CARD_W + 16, ((CARD_H + 16) * size.w) / size.h);
+  const baseW = Math.max(B.w + 16, ((B.h + 16) * size.w) / size.h);
   const upp = (s: number) => baseW / (s * size.w);
   const vbW = baseW / view.s;
   const vbH = (vbW * size.h) / size.w;
@@ -100,7 +104,9 @@ export function ZoomCard({ card }: { card: CardInstance }) {
         class="zoom-pane" ref={el}
         onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp} onWheel={onWheel}
       >
-        <CardView card={card} side={side} viewBox={`${view.cx - vbW / 2} ${view.cy - vbH / 2} ${vbW} ${vbH}`} />
+        {slab
+          ? <SlabView card={card} slab={slab} side={side} viewBox={`${view.cx - vbW / 2} ${view.cy - vbH / 2} ${vbW} ${vbH}`} />
+          : <CardView card={card} side={side} viewBox={`${view.cx - vbW / 2} ${view.cy - vbH / 2} ${vbW} ${vbH}`} />}
       </div>
       <div class="zoom-tools">
         <button onClick={() => setSide(side === 'front' ? 'back' : 'front')}>↻ {side === 'front' ? 'Back' : 'Front'}</button>

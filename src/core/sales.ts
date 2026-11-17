@@ -17,24 +17,15 @@ export interface Sale {
 
 const CENTS = [0, 0, 0.5, 0.99, 0.95, 0.49];
 
-/**
- * Recent sold listings for one card. Derived from (seed, card, day) without touching
- * the game RNG, so opening the panel never changes what happens next.
- * `nmPriceAt(daysAgo)` lets history follow the market once prices drift.
- */
-export function generateSales(
-  gameSeed: number,
-  cardId: string,
-  day: number,
-  nmPriceAt: (daysAgo: number) => number,
-): Sale[] {
+export interface Focus { company: string; grade: number }
+type NmAt = (daysAgo: number) => number;
+type SaleKind = Pick<Sale, 'kind' | 'tier' | 'company' | 'grade'>;
+
+/** Returns a function that adds one realistic sold listing to `out`, drawing from `rng`. */
+function listingMaker(rng: Rng, cardId: string, nmPriceAt: NmAt, out: Sale[]) {
   const S = CONFIG.sales;
   const def = cardDef(cardId);
-  const rng = new Rng(hashSeed('sales', gameSeed, cardId, day));
-  const grades = Object.entries(S.gradeWeights).map(([g, w]) => ({ g: Number(g), w }));
-  const out: Sale[] = [];
-
-  const add = (sale: Pick<Sale, 'kind' | 'tier' | 'company' | 'grade'>, mult: number, label: string) => {
+  return (sale: SaleKind, mult: number, label: string) => {
     const daysAgo = rng.int(0, S.lookbackDays);
     const fair = nmPriceAt(daysAgo) * mult;
     const graded = sale.kind === 'graded';
@@ -50,6 +41,23 @@ export function generateSales(
     price = Math.max(0.99, price >= 20 ? Math.floor(price) + rng.pick(CENTS) : Math.round(price * 100) / 100);
     out.push({ ...sale, daysAgo, marketplace: mp.name, price, note, title: `${def.name} ${cardNumber(def)} ${label}` });
   };
+}
+
+/**
+ * Recent sold listings for one card. Derived from (seed, card, day) without touching
+ * the game RNG, so opening the panel never changes what happens next.
+ * `nmPriceAt(daysAgo)` lets history follow the market once prices drift.
+ * Each `focus` (company id + grade) is topped up independently so there are always enough comps for a slab.
+ */
+export function generateSales(gameSeed: number, cardId: string, day: number, nmPriceAt: NmAt, focus: Focus[] = []): Sale[] {
+  const S = CONFIG.sales;
+  const def = cardDef(cardId);
+  const out: Sale[] = [];
+  const rng = new Rng(hashSeed('sales', gameSeed, cardId, day));
+  const add = listingMaker(rng, cardId, nmPriceAt, out);
+  const grades = Object.entries(S.gradeWeights).map(([g, w]) => ({ g: Number(g), w }));
+  const slab = (co: (typeof CONFIG.grading.companies)[number], grade: number) =>
+    add({ kind: 'graded', grade, company: co.name }, gradeMultiplier(gameSeed, cardId, grade) * co.premium, `${co.name} ${grade}`);
 
   for (const t of CONFIG.condition.tiers) {
     const [lo, hi] = S.rawPerTier[t.id];
@@ -58,8 +66,21 @@ export function generateSales(
   const [glo, ghi] = CONFIG.rarities[def.rarity].gradedSales;
   for (let n = rng.int(glo, ghi); n > 0; n--) {
     const grade = rng.weighted(grades).g;
-    const co = rng.weighted(CONFIG.grading.companies.map((c) => ({ ...c, w: c.usable ? 3 : 1 })));
-    add({ kind: 'graded', grade, company: co.name }, gradeMultiplier(gameSeed, cardId, grade) * co.premium, `${co.name} ${grade}`);
+    slab(rng.weighted(CONFIG.grading.companies.map((c) => ({ ...c, w: c.services.length ? 3 : 1 }))), grade);
+  }
+  for (const f of focus) {
+    const co = CONFIG.grading.companies.find((c) => c.id === f.company)!;
+    const fr = new Rng(hashSeed('sales-focus', gameSeed, cardId, day, co.id, f.grade));
+    const have = out.filter((s) => s.company === co.name && s.grade === f.grade).length;
+    const addFocus = listingMaker(fr, cardId, nmPriceAt, out);
+    const mult = gradeMultiplier(gameSeed, cardId, f.grade) * co.premium;
+    for (let n = fr.int(S.focusComps[0], S.focusComps[1]) - have; n > 0; n--) addFocus({ kind: 'graded', grade: f.grade, company: co.name }, mult, `${co.name} ${f.grade}`);
   }
   return out.sort((a, b) => a.daysAgo - b.daysAgo);
+}
+
+/** Median of the recent sales for one company + grade (with outliers included, like a real search). */
+export function medianSale(sales: Sale[], company: string, grade: number): number {
+  const p = sales.filter((s) => s.company === company && s.grade === grade).map((s) => s.price).sort((a, b) => a - b);
+  return p.length ? p[Math.floor(p.length / 2)] : 0;
 }

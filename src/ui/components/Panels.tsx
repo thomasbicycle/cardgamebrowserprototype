@@ -1,22 +1,27 @@
 import { useEffect, useMemo, useState } from 'preact/hooks';
 import { CONFIG } from '../../config';
-import { centeringPct, tierOf } from '../../core/condition';
-import { salesFor, type GameState } from '../../core/game';
+import { centeringPct, tierOf, type CardInstance } from '../../core/condition';
+import { calendarDay, marketValue, salesFor, showDayOn, shortDay, type GameState, type OwnedCard } from '../../core/game';
+import type { Focus } from '../../core/sales';
 import type { Encounter } from '../../core/seller';
 import { dispatch, money } from '../store';
 
 const TIERS = CONFIG.condition.tiers;
 const FILTERS = ['All', ...TIERS.map((t) => t.id), 'Graded'];
 
-export function SalesPanel({ game, cardId }: { game: GameState; cardId: string }) {
-  const [filter, setFilter] = useState('All');
+/** `chip` adds a filter for one slab (e.g. "PRA 9") and opens on it. */
+export function SalesPanel({ game, cardId, focus, chip }: { game: GameState; cardId: string; focus?: Focus[]; chip?: { company: string; grade: number } }) {
+  const chipLabel = chip ? `${chip.company} ${chip.grade}` : '';
+  const [filter, setFilter] = useState(chip ? chipLabel : 'All');
   const [guide, setGuide] = useState(false);
-  const sales = useMemo(() => salesFor(game, cardId), [game.seed, game.day, cardId]);
-  const rows = sales.filter((s) => filter === 'All' || (filter === 'Graded' ? s.kind === 'graded' : s.tier === filter));
+  const sales = useMemo(() => salesFor(game, cardId, focus), [game.seed, game.day, cardId, JSON.stringify(focus)]);
+  const rows = sales.filter((s) =>
+    filter === 'All' || (filter === chipLabel ? s.company === chip!.company && s.grade === chip!.grade : filter === 'Graded' ? s.kind === 'graded' : s.tier === filter));
+  const filters = chip ? ['All', chipLabel, 'Graded', ...TIERS.map((t) => t.id)] : FILTERS;
   return (
     <div class="sales">
       <div class="chips">
-        {FILTERS.map((f) => (
+        {filters.map((f) => (
           <button class={filter === f && !guide ? 'chip on' : 'chip'} onClick={() => { setFilter(f); setGuide(false); }}>{f}</button>
         ))}
         <button class={guide ? 'chip on' : 'chip'} onClick={() => setGuide(!guide)}>?</button>
@@ -87,26 +92,46 @@ export function HagglePanel({ game, enc }: { game: GameState; enc: Encounter }) 
   );
 }
 
-/** Hidden values, for tuning only. Shown when debug is switched on. */
-export function DebugPanel({ game, enc }: { game: GameState; enc: Encounter }) {
-  const c = enc.card.cond, s = enc.seller;
+function condRows(game: GameState, card: CardInstance): [string, string][] {
+  const c = card.cond;
   const pct = Math.round(centeringPct(c.centering));
-  const rows: [string, string][] = [
-    ['True value (this copy)', `$${enc.trueValue.toFixed(2)}`],
-    ['NM market price', `$${game.market.nm[enc.card.cardId].toFixed(2)}`],
+  return [
+    ['NM market price', `$${game.market.nm[card.cardId].toFixed(2)}`],
     ['Wear / raw tier', `${c.wear} (${tierOf(c.wear).id})`],
     ['Corners / edges / surface', `${c.corners} / ${c.edges} / ${c.surface}`],
     ['Centering', `${c.centering} (${pct}/${100 - pct})`],
     ['Grade potential', String(c.overall)],
-    ['Seller type', `${s.bucket} (${Math.round((s.ask / enc.trueValue) * 100)}% ask)`],
-    ['Floor / walk-away line', `$${s.floor.toFixed(2)} / $${s.walkLine.toFixed(2)}`],
-    ['Counters used', `${s.counters} of ${s.patience}`],
-    ['Customers left today', String(game.show?.customersLeft ?? 0)],
-    ['Seed', String(game.seed)],
   ];
+}
+const Debug = ({ rows }: { rows: [string, string][] }) => (
+  <div class="debug">{rows.map(([k, v]) => <div><span>{k}</span><b>{v}</b></div>)}</div>
+);
+
+/** Hidden values, for tuning only. Shown when debug is switched on. */
+export function DebugPanel({ game, enc }: { game: GameState; enc: Encounter }) {
+  const s = enc.seller;
   return (
-    <div class="debug">
-      {rows.map(([k, v]) => <div><span>{k}</span><b>{v}</b></div>)}
-    </div>
+    <Debug rows={[
+      ['True value (this copy)', `$${enc.trueValue.toFixed(2)}`],
+      ...condRows(game, enc.card),
+      ['Seller type', `${s.bucket} (${Math.round((s.ask / enc.trueValue) * 100)}% ask)`],
+      ['Floor / walk-away line', `$${s.floor.toFixed(2)} / $${s.walkLine.toFixed(2)}`],
+      ['Counters used', `${s.counters} of ${s.patience}`],
+      ['Customers left today', String(game.show?.customersLeft ?? 0)],
+      ['Seed', String(game.seed)],
+    ]} />
+  );
+}
+
+export function OwnedDebug({ game, owned }: { game: GameState; owned: OwnedCard }) {
+  const job = owned.grading;
+  return (
+    <Debug rows={[
+      ['True value now', `$${marketValue(game, owned).toFixed(2)}`],
+      ...condRows(game, owned.card),
+      ['Pending grade', job ? `${job.grade} (back cal day ${job.returnsOn}, ${shortDay(showDayOn(job.returnsOn))})` : '—'],
+      ['Today (cal day)', String(calendarDay(game.day))],
+      ['Seed', String(game.seed)],
+    ]} />
   );
 }

@@ -84,12 +84,20 @@ export const CONFIG = {
       10: [8, 10], 9: [2, 3], 8: [1.3, 1.3], 7: [1, 1], 6: [0.8, 0.8],
       5: [0.62, 0.62], 4: [0.5, 0.5], 3: [0.4, 0.4], 2: [0.3, 0.3], 1: [0.22, 0.22],
     } as Record<number, [number, number]>,
-    /** premium = how the market prices this company's slabs. usable = player can submit (Milestone 2). */
+    gradeNames: {
+      10: 'GEM MINT', 9: 'MINT', 8: 'NM-MT', 7: 'NEAR MINT', 6: 'EX-MT',
+      5: 'EXCELLENT', 4: 'VG-EX', 3: 'VERY GOOD', 2: 'GOOD', 1: 'POOR',
+    } as Record<number, string>,
+    /**
+     * premium = how the market prices this company's slabs vs the top company.
+     * services = what the player can submit to; a company with none only shows up in sales.
+     * days = turnaround in calendar days (inclusive range, rolled at submission).
+     */
     companies: [
-      { id: 'pra', name: 'PRA', premium: 1, usable: true, fee: 100, turnaroundDays: 4 },
-      { id: 'cgx', name: 'CGX', premium: 0.9, usable: true, fee: 15, turnaroundDays: 21 },
-      { id: 'buckett', name: 'Buckett', premium: 0.95, usable: false, fee: 0, turnaroundDays: 0 },
-      { id: 'tagd', name: 'TAGD', premium: 0.85, usable: false, fee: 0, turnaroundDays: 0 },
+      { id: 'pra', name: 'PRA', premium: 1, label: { bg: '#fbfbf7', fg: '#16161c', accent: '#c9302c' }, services: [{ id: 'fast', name: 'Fast', fee: 100, days: [3, 5] }] as GradingService[] },
+      { id: 'cgx', name: 'CGX', premium: 0.9, label: { bg: '#eaf1ff', fg: '#0f1d44', accent: '#2f5fd0' }, services: [{ id: 'value', name: 'Value', fee: 15, days: [18, 24] }] as GradingService[] },
+      { id: 'buckett', name: 'Buckett', premium: 0.95, label: { bg: '#d6d8de', fg: '#15151a', accent: '#8a6a22' }, services: [] as GradingService[] },
+      { id: 'tagd', name: 'TAGD', premium: 0.85, label: { bg: '#15171c', fg: '#f2f2f2', accent: '#3fbf7f' }, services: [] as GradingService[] },
     ],
   },
 
@@ -132,6 +140,8 @@ export const CONFIG = {
     /** Raw sales generated per condition, so every condition filter has at least 5 comps. */
     rawPerTier: { NM: [6, 10], LP: [5, 8], MP: [5, 7], HP: [5, 6], DMG: [5, 6] } as Record<string, [number, number]>,
     gradeWeights: { 10: 6, 9: 14, 8: 8, 7: 4, 6: 2, 5: 1 } as Record<number, number>,
+    /** When looking at one company + grade, at least this many comps exist (inclusive range). */
+    focusComps: [5, 7] as [number, number],
     outlierChance: 0.14,
     outliers: [
       { id: 'badPhoto', w: 4, mult: [0.55, 0.75], note: '1 photo · blurry' },
@@ -148,5 +158,6 @@ export const CONFIG = {
   },
 };
 
+export interface GradingService { id: string; name: string; fee: number; days: [number, number] }
 export type RarityId = keyof typeof CONFIG.rarities;
 export type TierId = 'NM' | 'LP' | 'MP' | 'HP' | 'DMG';
