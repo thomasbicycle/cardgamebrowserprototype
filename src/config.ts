@@ -58,10 +58,16 @@ export const CONFIG = {
       { cond: 9.5, nicks: 1, nickLen: 0.9, nickDepth: 0.45, cornerBlobs: 0.5, cornerSize: 0.6, scratches: 0.5, scratchLen: 10, scratchOp: 0.22, scuffs: 0, creases: 0 },
       { cond: 8, nicks: 5, nickLen: 1.3, nickDepth: 0.6, cornerBlobs: 3, cornerSize: 0.9, scratches: 2, scratchLen: 16, scratchOp: 0.28, scuffs: 0.3, creases: 0 },
       { cond: 6, nicks: 20, nickLen: 3, nickDepth: 1.1, cornerBlobs: 9, cornerSize: 1.9, scratches: 5, scratchLen: 30, scratchOp: 0.4, scuffs: 2, creases: 0 },
-      { cond: 4.5, nicks: 36, nickLen: 4.5, nickDepth: 1.4, cornerBlobs: 14, cornerSize: 2.6, scratches: 10, scratchLen: 55, scratchOp: 0.5, scuffs: 4, creases: 0.6 },
-      { cond: 2.5, nicks: 70, nickLen: 7.5, nickDepth: 2.2, cornerBlobs: 24, cornerSize: 4, scratches: 16, scratchLen: 85, scratchOp: 0.6, scuffs: 7, creases: 2.5 },
+      { cond: 4.5, nicks: 36, nickLen: 4.5, nickDepth: 1.4, cornerBlobs: 14, cornerSize: 2.6, scratches: 10, scratchLen: 55, scratchOp: 0.5, scuffs: 4, creases: 0.25 },
+      { cond: 2.5, nicks: 62, nickLen: 6.8, nickDepth: 2, cornerBlobs: 22, cornerSize: 3.6, scratches: 15, scratchLen: 80, scratchOp: 0.58, scuffs: 6, creases: 1.1 },
       { cond: 1, nicks: 110, nickLen: 11, nickDepth: 3.2, cornerBlobs: 36, cornerSize: 6, scratches: 24, scratchLen: 120, scratchOp: 0.7, scuffs: 10, creases: 4 },
     ],
+    /** Share of cards whose wear is mostly on the back, so the front looks clean until you flip it. */
+    backHeavyChance: 0.4,
+    /** Chance a scratch / scuff / small whitening mark shows on the front: [normal card, back-heavy card]. */
+    frontShare: { scratch: [0.7, 0.12], scuff: [0.6, 0.1], whitening: [0.3, 0.06] },
+    /** Whitening bigger than this (card units) always shows on the front too: [normal, back-heavy]. */
+    frontWhiteningSize: { corner: [2, 4.5], edge: [1.5, 2.8] },
     /** Damaged cards always get at least one of these, more as wear drops toward 1. */
     structural: [
       { id: 'bigCrease', w: 3 },
@@ -103,8 +109,12 @@ export const CONFIG = {
     cheap: { askBelow: 20, floorDropDollars: [3, 6] as [number, number] },
     /** Counters a seller will make before leaving (inclusive range). */
     patience: [3, 4] as [number, number],
-    /** Each counter closes this fraction of the gap between current ask and floor. */
-    concession: [0.3, 0.6] as [number, number],
+    /** First counter closes this fraction of the ask-to-floor gap (halved for offers near the walk line). */
+    firstConcession: [0.25, 0.45] as [number, number],
+    /** After that the seller only moves when the player does: they drop this many dollars per dollar the player comes up. */
+    reciprocity: [0.6, 1.3] as [number, number],
+    /** A single counter never closes more than this fraction of the remaining gap, so the floor is never shown. */
+    maxStepFrac: 0.5,
     /** Re-roll a seller up to this many times if the ask is far beyond the player's cash. */
     affordRerolls: 3,
     affordFactor: 1.5,

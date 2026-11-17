@@ -50,7 +50,6 @@ describe('condition', () => {
     for (let i = 0; i < 30; i++) {
       const lp = generateFlaws(mk(7)), hp = generateFlaws(mk(3.5)), dmg = generateFlaws(mk(1.8));
       expect(lp.creases.length + lp.tears.length + lp.stains.length).toBe(0);
-      expect(hp.creases.length).toBeGreaterThan(0);
       expect(hp.tears.length + hp.stains.length).toBe(0);
       expect(dmg.tears.length + dmg.stains.length + dmg.creases.filter((c) => c.w > 1).length).toBeGreaterThan(0);
     }
@@ -92,6 +91,34 @@ describe('sellers', () => {
         expect(makeOffer(rng, c, mid)).toBe('walk');
       }
     }
+  });
+});
+
+describe('haggling cannot be gamed by repeating one offer', () => {
+  it('seller holds until the player comes up, and never shows the floor', () => {
+    const { rng, list } = encounters(600);
+    let checked = 0;
+    for (const e of list.filter((x) => x.trueValue > 60)) {
+      const s = e.seller;
+      const low = Math.floor(s.walkLine) + 2;
+      if (low >= s.floor - 6) continue;
+      checked++;
+      const stay = structuredClone(e), climb = structuredClone(e);
+      makeOffer(rng, stay, low);
+      const afterFirst = stay.seller.currentAsk;
+      expect(afterFirst).toBeLessThanOrEqual(s.ask);
+      while (stay.status === 'open') makeOffer(rng, stay, low);
+      expect(stay.status).toBe('walked');
+      expect(stay.seller.currentAsk).toBe(afterFirst);
+      expect(afterFirst - s.floor).toBeGreaterThanOrEqual((s.ask - s.floor) * 0.55 - 0.5);
+
+      makeOffer(rng, climb, low);
+      const before = climb.seller.currentAsk;
+      makeOffer(rng, climb, low + 3);
+      if (before - s.floor > 6) expect(climb.seller.currentAsk).toBeLessThan(before);
+      expect(climb.seller.currentAsk).toBeGreaterThanOrEqual(s.floor);
+    }
+    expect(checked).toBeGreaterThan(50);
   });
 });
 

@@ -103,6 +103,10 @@ export function generateFlaws(card: CardInstance): Flaws {
   /** 2.4 -> 2, plus a 40% chance of a third. */
   const count = (x: number) => Math.floor(x) + (rng.chance(x - Math.floor(x)) ? 1 : 0);
 
+  // Some cards took their wear face-down: the front looks clean and the back tells the truth.
+  const F = CONFIG.flaws;
+  const bh = rng.chance(F.backHeavyChance) ? 1 : 0;
+
   const worst = centeringPct(cond.centering);
   const other = rng.range(50, worst);
   const sign = () => (rng.chance(0.5) ? 1 : -1);
@@ -127,7 +131,7 @@ export function generateFlaws(card: CardInstance): Flaws {
       x: cx + Math.cos(a) * (CARD_R - rng.range(0, 0.6)),
       y: cy + Math.sin(a) * (CARD_R - rng.range(0, 0.6)),
       rx: r, ry: r * rng.range(0.6, 1), rot: rng.range(0, 180),
-      front: r > 2 || rng.chance(0.3),
+      front: r > F.frontWhiteningSize.corner[bh] || rng.chance(F.frontShare.whitening[bh]),
     });
   }
 
@@ -143,7 +147,7 @@ export function generateFlaws(card: CardInstance): Flaws {
       x: horiz ? t : edge === 1 ? CARD_W : 0,
       y: horiz ? (edge === 0 ? 0 : CARD_H) : t,
       rx: horiz ? len / 2 : depth, ry: horiz ? depth : len / 2, rot: 0,
-      front: depth > 1.5 || rng.chance(0.3),
+      front: depth > F.frontWhiteningSize.edge[bh] || rng.chance(F.frontShare.whitening[bh]),
     });
   }
 
@@ -157,13 +161,13 @@ export function generateFlaws(card: CardInstance): Flaws {
     const [x, y] = spot(24);
     const dx = (Math.cos(a) * len) / 2, dy = (Math.sin(a) * len) / 2;
     const o = Math.min(0.85, sOp * rng.range(0.8, 1.2));
-    scratches.push({ x1: x - dx, y1: y - dy, x2: x + dx, y2: y + dy, w: 0.25 + o * 0.9, o, back: rng.chance(0.3) });
+    scratches.push({ x1: x - dx, y1: y - dy, x2: x + dx, y2: y + dy, w: 0.25 + o * 0.9, o, back: !rng.chance(F.frontShare.scratch[bh]) });
   }
   const scuffs: Scuff[] = [];
   for (let k = count(at(cond.surface, 'scuffs')); k > 0; k--) {
     const [x, y] = spot(28);
     const rx = rng.range(6, 16);
-    scuffs.push({ x, y, rx, ry: rx * rng.range(0.4, 0.9), rot: rng.range(0, 180), o: rng.range(0.25, 0.5), back: rng.chance(0.4) });
+    scuffs.push({ x, y, rx, ry: rx * rng.range(0.4, 0.9), rot: rng.range(0, 180), o: rng.range(0.25, 0.5), back: !rng.chance(F.frontShare.scuff[bh]) });
   }
   const crease = (len: number, w: number): Crease => {
     const a = rng.range(0, Math.PI);
@@ -177,8 +181,7 @@ export function generateFlaws(card: CardInstance): Flaws {
   };
   const creases: Crease[] = [];
   const tier = tierId(cond.wear);
-  let small = count(at(cond.surface, 'creases'));
-  if (tier === 'HP' || tier === 'DMG') small = Math.max(1, small);
+  const small = count(at(cond.surface, 'creases'));
   for (let k = small; k > 0; k--) creases.push(crease(rng.range(15, 45), 0.9));
 
   // Damaged: structural problems no other tier has.

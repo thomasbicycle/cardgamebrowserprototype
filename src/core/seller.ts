@@ -52,8 +52,8 @@ const INTROS = [
 const FAR = ["{offer}? That's way too light. I could maybe do {ask}.", 'Come on, {offer}? Be serious. {ask}.', "Careful, you're about to lose me. {ask}."];
 const MID = ['Hmm. I could do {ask}.', 'Come up a bit. {ask}.', 'Best I can say right now is {ask}.', 'Meet me at {ask}.'];
 const CLOSE = ["You're close. {ask} and we're done.", 'Almost. Make it {ask}.', "We're not far apart. {ask}?"];
-const REPEAT = ['You said that already. {ask}.', "The same number won't work twice. {ask}."];
-const FINALS = ["{ask}. That's as low as I go.", 'Last number: {ask}.'];
+const HOLD = ["You have to come up. I'm still at {ask}.", 'Same number, same answer: {ask}.', 'I moved, now you move. {ask}.', "You're not giving me anything. {ask}."];
+const FINALS = ["{ask}. I'm about done here.", 'Last time I say it: {ask}.'];
 const DEALS = ['Deal. Pleasure doing business.', "Sold. It's yours.", 'Works for me.'];
 const EASY = ['Easy. Sold!', 'No haggling? I like you. Sold.', "Wow, that was quick. It's yours."];
 const GRUDGING = ['Ugh... fine. You drive a hard bargain.', "That's the least I'd take. Deal.", "You're killing me. Okay, deal."];
@@ -117,12 +117,22 @@ export function makeOffer(rng: Rng, enc: Encounter, amount: number): OfferResult
   s.counters++;
   // 0 = offer right at the floor, 1 = offer right at the walk-away line.
   const gap = (s.floor - offer) / Math.max(0.01, s.floor - s.walkLine);
-  const repeated = enc.offers.some((o) => o.amount >= offer);
-  const [lo, hi] = CONFIG.seller.concession;
-  const target = s.currentAsk - (s.currentAsk - s.floor) * rng.range(lo, hi);
-  // Always move at least $1 when there is room, never below the floor.
-  s.currentAsk = Math.max(Math.ceil(s.floor), Math.min(s.currentAsk - 1, Math.round(target)));
-  const lines = s.counters >= s.patience ? FINALS : repeated ? REPEAT : gap > 0.65 ? FAR : gap < 0.3 ? CLOSE : MID;
+  const S = CONFIG.seller;
+  const room = s.currentAsk - s.floor;
+  let drop: number;
+  if (enc.offers.length === 0) {
+    // Opening move: a real concession, smaller if the offer was close to insulting.
+    drop = room * rng.range(S.firstConcession[0], S.firstConcession[1]) * (1 - 0.5 * gap);
+  } else {
+    // After that they only give ground when the player does. Sitting on one number gets nothing.
+    const raise = offer - Math.max(...enc.offers.map((o) => o.amount));
+    drop = raise > 0 ? raise * rng.range(S.reciprocity[0], S.reciprocity[1]) : 0;
+  }
+  const held = drop <= 0;
+  // Never close more than part of the remaining gap, so the ask does not walk down to the floor.
+  drop = Math.min(drop, room * S.maxStepFrac);
+  s.currentAsk = Math.max(Math.ceil(s.floor), Math.round(s.currentAsk - drop));
+  const lines = held ? HOLD : s.counters >= s.patience ? FINALS : gap > 0.65 ? FAR : gap < 0.3 ? CLOSE : MID;
   enc.line = fill(rng.pick(lines), { ask: s.currentAsk, offer });
   enc.offers.push({ amount: offer, result: 'counter', counter: s.currentAsk });
   return 'counter';
