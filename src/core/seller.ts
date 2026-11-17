@@ -1,5 +1,5 @@
 import { CONFIG } from '../config';
-import { CARDS, cardDef } from './cards';
+import { CARDS } from './cards';
 import { rollCondition, type CardInstance } from './condition';
 import { rawValue, type MarketState } from './market';
 import type { Rng } from './rng';
@@ -37,25 +37,33 @@ export interface Encounter {
 const NAMES = ['Marcus', 'Dee', 'Old Tom', 'Priya', 'Jax', 'Renée', 'Big Al', 'Suki', 'Walt', 'Nico', 'Tasha', 'Gus', 'Imani', 'Cole', 'Bea', 'Hiro'];
 const AVATARS = ['🧔', '👩', '👴', '🧑', '👦', '👩‍🦰', '🧓', '👧', '👨‍🦳', '🧑‍🦱', '👩‍🦱', '👨', '👩‍🦳', '🧢', '👵', '🧑‍🦰'];
 
-// Sales patter is picked at random and never correlates with the card's real condition.
+// Opening patter is picked at random and never correlates with the card's real condition.
 const INTROS = [
-  'Pulled this {card} myself. Looking for ${ask}.',
-  "Got a {card} here. ${ask} and it's yours.",
-  'Pack fresh {card}, straight to sleeve. ${ask}.',
-  "{card}. Found it in my old binder. I'd take ${ask}.",
-  'You buying? {card}, ${ask}.',
-  "My kid's done collecting. {card} for ${ask}?",
-  'Clean {card}. I need ${ask} for it.',
+  'Pulled this {card} myself. Looking for {ask}.',
+  "Got a {card} here. {ask} and it's yours.",
+  'Pack fresh {card}, straight to sleeve. {ask}.',
+  "{card}. Found it in my old binder. I'd take {ask}.",
+  'You buying? {card}, {ask}.',
+  "My kid's done collecting. {card} for {ask}?",
+  'Clean {card}. I need {ask} for it.',
 ];
-const COUNTERS = ['Hmm. I could do ${ask}.', 'Come up a bit. ${ask}.', "Best I can say right now is ${ask}.", 'Meet me at ${ask}.'];
-const FINALS = ["${ask}. That's as low as I go.", 'Last number: ${ask}.'];
+// Reactions depend on how the offer compares with what the seller would take, so the
+// player can learn from them. "{worth}" is what the seller believes the card is worth.
+const FAR = ["{offer}? That's way too light. I could maybe do {ask}.", 'Come on, {offer}? Be serious. {ask}.', "Careful, you're about to lose me. {ask}."];
+const MID = ['Hmm. I could do {ask}.', 'Come up a bit. {ask}.', 'Best I can say right now is {ask}.', 'Meet me at {ask}.'];
+const CLOSE = ["You're close. {ask} and we're done.", 'Almost. Make it {ask}.', "We're not far apart. {ask}?"];
+const REPEAT = ['You said that already. {ask}.', "The same number won't work twice. {ask}."];
+const FINALS = ["{ask}. That's as low as I go.", 'Last number: {ask}.'];
 const DEALS = ['Deal. Pleasure doing business.', "Sold. It's yours.", 'Works for me.'];
-const INSULTED = ["That's insulting. I'm out.", 'Not even close. See ya.', "I'll try the next table."];
+const EASY = ['Easy. Sold!', 'No haggling? I like you. Sold.', "Wow, that was quick. It's yours."];
+const GRUDGING = ['Ugh... fine. You drive a hard bargain.', "That's the least I'd take. Deal.", "You're killing me. Okay, deal."];
+const INSULTED = ["{offer}?! This is a {worth} card. I'm out.", '{offer} on a {worth} card? Not a chance. See ya.', "Wow. {offer}. I'll take my {worth} card to the next table."];
 const FED_UP = ["We're going in circles. Forget it.", "I don't have all day. Pass."];
 const PASSED = ['Alright, your loss.', "No worries. I'll shop it around."];
 
-const fill = (s: string, card: string, ask: number) =>
-  s.replace('{card}', card).replace('${ask}', `$${ask.toLocaleString('en-US')}`);
+const usd = (n: number) => `$${Math.round(n).toLocaleString('en-US')}`;
+const fill = (s: string, v: { card?: string; ask?: number; offer?: number; worth?: number }) =>
+  s.replace('{card}', v.card ?? '').replace('{ask}', usd(v.ask ?? 0)).replace('{offer}', usd(v.offer ?? 0)).replace('{worth}', usd(v.worth ?? 0));
 
 export function generateEncounter(rng: Rng, market: MarketState, cash: number, uid: number): Encounter {
   const S = CONFIG.seller;
@@ -67,16 +75,19 @@ export function generateEncounter(rng: Rng, market: MarketState, cash: number, u
     const trueValue = rawValue(market.nm[def.id], card.cond);
     const bucket = rng.weighted(S.askBuckets);
     const ask = Math.max(1, Math.round(trueValue * rng.range(bucket.range[0], bucket.range[1])));
-    const floor = ask * rng.range(S.floorFracOfAsk[0], S.floorFracOfAsk[1]);
+    let floor = ask * rng.range(S.floorFracOfAsk[0], S.floorFracOfAsk[1]);
+    // Cheap cards: nobody fights over a couple of dollars, so the floor also drops by a flat amount.
+    if (ask < S.cheap.askBelow) floor = Math.min(floor, ask - rng.range(S.cheap.floorDropDollars[0], S.cheap.floorDropDollars[1]));
+    floor = Math.max(1, floor);
     const who = rng.int(0, NAMES.length - 1);
     best = {
       seller: {
         name: NAMES[who], avatar: AVATARS[who], bucket: bucket.id, ask, currentAsk: ask, floor,
-        walkLine: Math.max(0, floor - S.walkLineFracOfTrue * trueValue),
+        walkLine: Math.max(0, floor - Math.max(S.walkLineFracOfTrue * trueValue, S.minWalkGapDollars)),
         patience: rng.int(S.patience[0], S.patience[1]), counters: 0,
       },
       card, trueValue, status: 'open', offers: [],
-      line: fill(rng.pick(INTROS), def.name, ask),
+      line: fill(rng.pick(INTROS), { card: def.name, ask }),
     };
     if (ask <= cash * S.affordFactor) break;
   }
@@ -87,28 +98,32 @@ export function generateEncounter(rng: Rng, market: MarketState, cash: number, u
 export function makeOffer(rng: Rng, enc: Encounter, amount: number): OfferResult {
   if (enc.status !== 'open') throw new Error('Encounter is closed');
   const s = enc.seller;
-  const name = cardDef(enc.card.cardId).name;
   const offer = Math.max(0, Math.floor(amount));
 
   if (offer >= s.floor) {
     enc.status = 'deal';
     enc.paid = Math.min(offer, s.currentAsk);
-    enc.line = rng.pick(DEALS);
+    // Snapping up the ask reads as easy money; landing right on the floor gets a groan.
+    enc.line = rng.pick(offer >= s.currentAsk ? EASY : offer <= s.floor * 1.06 ? GRUDGING : DEALS);
     enc.offers.push({ amount: offer, result: 'deal' });
     return 'deal';
   }
   if (offer <= s.walkLine || s.counters >= s.patience) {
     enc.status = 'walked';
-    enc.line = rng.pick(offer <= s.walkLine ? INSULTED : FED_UP);
+    enc.line = fill(rng.pick(offer <= s.walkLine ? INSULTED : FED_UP), { offer, worth: s.ask });
     enc.offers.push({ amount: offer, result: 'walk' });
     return 'walk';
   }
   s.counters++;
+  // 0 = offer right at the floor, 1 = offer right at the walk-away line.
+  const gap = (s.floor - offer) / Math.max(0.01, s.floor - s.walkLine);
+  const repeated = enc.offers.some((o) => o.amount >= offer);
   const [lo, hi] = CONFIG.seller.concession;
   const target = s.currentAsk - (s.currentAsk - s.floor) * rng.range(lo, hi);
   // Always move at least $1 when there is room, never below the floor.
   s.currentAsk = Math.max(Math.ceil(s.floor), Math.min(s.currentAsk - 1, Math.round(target)));
-  enc.line = fill(rng.pick(s.counters >= s.patience ? FINALS : COUNTERS), name, s.currentAsk);
+  const lines = s.counters >= s.patience ? FINALS : repeated ? REPEAT : gap > 0.65 ? FAR : gap < 0.3 ? CLOSE : MID;
+  enc.line = fill(rng.pick(lines), { ask: s.currentAsk, offer });
   enc.offers.push({ amount: offer, result: 'counter', counter: s.currentAsk });
   return 'counter';
 }

@@ -1,5 +1,6 @@
 import { CONFIG } from '../config';
-import type { CardInstance } from './condition';
+import type { TierId } from '../config';
+import { tierId, type CardInstance } from './condition';
 import { initMarket, rawValue, type MarketState } from './market';
 import { Rng, hashSeed } from './rng';
 import { generateSales, type Sale } from './sales';
@@ -16,7 +17,7 @@ export interface DayLog {
   seen: number;
   passed: number;
   walked: number;
-  bought: { uid: number; cardId: string; paid: number; trueValue: number }[];
+  bought: { uid: number; cardId: string; paid: number; trueValue: number; tier: TierId }[];
 }
 
 export interface ShowState {
@@ -81,7 +82,7 @@ function closeDeal(state: GameState, enc: Encounter): void {
   const paid = enc.paid!;
   state.cash -= paid;
   state.inventory.push({ card: enc.card, paid, trueValueAtBuy: enc.trueValue, boughtDay: state.day });
-  state.log.bought.push({ uid: enc.card.uid, cardId: enc.card.cardId, paid, trueValue: enc.trueValue });
+  state.log.bought.push({ uid: enc.card.uid, cardId: enc.card.cardId, paid, trueValue: enc.trueValue, tier: tierId(enc.card.cond.wear) });
 }
 
 /** Applies an action by mutating `state`. All randomness comes from state.rngState. */

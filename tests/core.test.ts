@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { CONFIG } from '../src/config';
-import { conditionFromOverall, generateFlaws, rollCondition, tierId } from '../src/core/condition';
+import { conditionFromWear,generateFlaws, rollCondition, tierId } from '../src/core/condition';
 import { createGame, reduce, salesFor, type Action } from '../src/core/game';
 import { initMarket } from '../src/core/market';
 import { Rng } from '../src/core/rng';
@@ -24,7 +24,9 @@ describe('condition', () => {
     const rng = new Rng(1);
     for (let i = 0; i < 500; i++) {
       const c = rollCondition(rng);
-      expect(c.overall).toBeCloseTo(Math.min(c.centering, c.corners, c.edges, c.surface), 5);
+      expect(c.wear).toBeCloseTo(Math.min(c.corners, c.edges, c.surface), 5);
+      expect(c.overall).toBeCloseTo(Math.min(c.wear, c.centering), 5);
+      expect(Math.max(c.corners, c.edges, c.surface) - c.wear).toBeLessThanOrEqual(CONFIG.condition.maxSpread + 0.01);
       expect(c.overall).toBeGreaterThanOrEqual(1);
       expect(c.overall).toBeLessThanOrEqual(10);
     }
@@ -32,11 +34,26 @@ describe('condition', () => {
   });
   it('worse cards get more visible flaws; flaws are stable per card', () => {
     const rng = new Rng(3);
-    const mk = (o: number) => ({ uid: 1, cardId: 'pebblit', seed: 99, cond: conditionFromOverall(rng, o) });
-    const gem = generateFlaws(mk(10)), beat = generateFlaws(mk(2));
-    expect(gem.whitening.length + gem.scratches.length).toBeLessThan(3);
-    expect(beat.whitening.length).toBeGreaterThan(30);
-    expect(beat.creases.length).toBeGreaterThan(0);
+    const mk = (o: number) => ({ uid: 1, cardId: 'pebblit', seed: rng.int(1, 1e9), cond: conditionFromWear(rng, o) });
+    const marks = (o: number) => {
+      let n = 0;
+      for (let i = 0; i < 30; i++) {
+        const f = generateFlaws(mk(o));
+        n += f.whitening.length + f.scratches.length + f.scuffs.length;
+      }
+      return n / 30;
+    };
+    expect(marks(10)).toBeLessThan(1);
+    // Each tier down is clearly busier than the one above it.
+    const byTier = [9, 7, 5.2, 3.5, 1.5].map(marks);
+    for (let i = 1; i < byTier.length; i++) expect(byTier[i]).toBeGreaterThan(byTier[i - 1] * 1.4);
+    for (let i = 0; i < 30; i++) {
+      const lp = generateFlaws(mk(7)), hp = generateFlaws(mk(3.5)), dmg = generateFlaws(mk(1.8));
+      expect(lp.creases.length + lp.tears.length + lp.stains.length).toBe(0);
+      expect(hp.creases.length).toBeGreaterThan(0);
+      expect(hp.tears.length + hp.stains.length).toBe(0);
+      expect(dmg.tears.length + dmg.stains.length + dmg.creases.filter((c) => c.w > 1).length).toBeGreaterThan(0);
+    }
     const card = mk(7);
     expect(generateFlaws(card)).toEqual(generateFlaws(card));
   });
@@ -58,7 +75,7 @@ describe('sellers', () => {
     const { rng, list } = encounters(300);
     for (const e of list.filter((x) => x.trueValue > 40)) {
       const s = e.seller;
-      expect(s.walkLine).toBeCloseTo(Math.max(0, s.floor - CONFIG.seller.walkLineFracOfTrue * e.trueValue), 5);
+      expect(s.walkLine).toBeCloseTo(s.floor - CONFIG.seller.walkLineFracOfTrue * e.trueValue, 5);
       const a = structuredClone(e), b = structuredClone(e), c = structuredClone(e);
       expect(makeOffer(rng, a, Math.ceil(s.floor))).toBe('deal');
       expect(a.paid).toBe(Math.ceil(s.floor));
@@ -78,7 +95,23 @@ describe('sellers', () => {
   });
 });
 
+describe('cheap cards', () => {
+  it('can be lowballed without the seller storming off', () => {
+    const { rng, list } = encounters(3000);
+    const cheap = list.filter((e) => e.seller.ask < 15);
+    expect(cheap.length).toBeGreaterThan(100);
+    for (const e of cheap) expect(makeOffer(rng, e, Math.round(e.seller.ask * 0.7))).not.toBe('walk');
+  });
+});
+
 describe('sales', () => {
+  it('every raw condition has at least 5 comps', () => {
+    const g = createGame(9);
+    for (const id of Object.keys(g.market.nm)) {
+      const sales = salesFor(g, id);
+      for (const t of CONFIG.condition.tiers) expect(sales.filter((s) => s.tier === t.id).length).toBeGreaterThanOrEqual(5);
+    }
+  });
   it('are deterministic and centred on the true NM price', () => {
     const g = createGame(5);
     expect(salesFor(g, 'nocfang')).toEqual(salesFor(g, 'nocfang'));

@@ -39,6 +39,13 @@ export function CardView({ card, side, viewBox }: Props) {
           <stop offset="0" stop-color="#ff9ad5" /><stop offset="0.35" stop-color="#9ad7ff" />
           <stop offset="0.7" stop-color="#b6ffb0" /><stop offset="1" stop-color="#ffe89a" />
         </linearGradient>
+        <radialGradient id={`${id}scuff`}>
+          <stop offset="0" stop-color="#fff" stop-opacity="0.9" /><stop offset="0.6" stop-color="#fff" stop-opacity="0.5" /><stop offset="1" stop-color="#fff" stop-opacity="0" />
+        </radialGradient>
+        <radialGradient id={`${id}stain`}>
+          <stop offset="0" stop-color="#5a3d14" stop-opacity="0.5" /><stop offset="0.75" stop-color="#5a3d14" stop-opacity="0.4" />
+          <stop offset="0.9" stop-color="#3d2808" stop-opacity="0.55" /><stop offset="1" stop-color="#3d2808" stop-opacity="0" />
+        </radialGradient>
         <pattern id={`${id}pat`} width="18" height="18" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
           <rect width="18" height="18" fill="#27408f" /><rect width="9" height="9" fill="#2e4aa3" /><rect x="9" y="9" width="9" height="9" fill="#2e4aa3" />
         </pattern>
@@ -75,6 +82,12 @@ export function CardView({ card, side, viewBox }: Props) {
             <text x={IW - 10} y={IH - 8} text-anchor="end" font-size="12" fill="#1b1b22">{rarity.symbol}</text>
           </g>
         )}
+        {flaws.stains.map((b) => (
+          <ellipse cx={mx(b.x)} cy={b.y} rx={b.rx} ry={b.ry} fill={`url(#${id}stain)`} transform={`rotate(${b.rot} ${mx(b.x)} ${b.y})`} />
+        ))}
+        {flaws.scuffs.filter((s) => s.back === back).map((s) => (
+          <ellipse cx={mx(s.x)} cy={s.y} rx={s.rx} ry={s.ry} fill={`url(#${id}scuff)`} opacity={s.o} transform={`rotate(${s.rot} ${mx(s.x)} ${s.y})`} />
+        ))}
         {flaws.scratches.filter((s) => s.back === back).map((s) => (
           <line x1={mx(s.x1)} y1={s.y1} x2={mx(s.x2)} y2={s.y2} stroke="#fff" stroke-width={s.w} stroke-opacity={s.o} stroke-linecap="round" />
         ))}
@@ -87,6 +100,12 @@ export function CardView({ card, side, viewBox }: Props) {
             </g>
           );
         })}
+        {flaws.tears.map((t) => (
+          <g stroke-linejoin="round">
+            <path d={'M' + t.map(([x, y]) => `${mx(x)},${y}`).join('L') + 'Z'} fill={WHITE} stroke="#000" stroke-opacity="0.55" stroke-width="0.6" />
+            <path d={`M${mx((t[0][0] + t[4][0]) / 2)},${(t[0][1] + t[4][1]) / 2}L${mx(t[2][0])},${t[2][1]}`} stroke="#0d1018" stroke-width="0.9" fill="none" />
+          </g>
+        ))}
         {flaws.whitening.filter((b) => back || b.front).map((b) => (
           <ellipse cx={mx(b.x)} cy={b.y} rx={b.rx} ry={b.ry} fill={WHITE} opacity="0.92" transform={`rotate(${b.rot} ${mx(b.x)} ${b.y})`} />
         ))}

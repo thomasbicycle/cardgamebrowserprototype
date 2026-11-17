@@ -1,34 +1,45 @@
 import { useEffect, useMemo, useState } from 'preact/hooks';
-import { tierOf } from '../../core/condition';
+import { CONFIG } from '../../config';
+import { centeringPct, tierOf } from '../../core/condition';
 import { salesFor, type GameState } from '../../core/game';
 import type { Encounter } from '../../core/seller';
 import { dispatch, money } from '../store';
 
+const TIERS = CONFIG.condition.tiers;
+const FILTERS = ['All', ...TIERS.map((t) => t.id), 'Graded'];
+
 export function SalesPanel({ game, cardId }: { game: GameState; cardId: string }) {
-  const [filter, setFilter] = useState<'all' | 'raw' | 'graded'>('all');
+  const [filter, setFilter] = useState('All');
+  const [guide, setGuide] = useState(false);
   const sales = useMemo(() => salesFor(game, cardId), [game.seed, game.day, cardId]);
-  const rows = sales.filter((s) => filter === 'all' || s.kind === filter);
+  const rows = sales.filter((s) => filter === 'All' || (filter === 'Graded' ? s.kind === 'graded' : s.tier === filter));
   return (
     <div class="sales">
       <div class="chips">
-        {(['all', 'raw', 'graded'] as const).map((f) => (
-          <button class={filter === f ? 'chip on' : 'chip'} onClick={() => setFilter(f)}>{f}</button>
+        {FILTERS.map((f) => (
+          <button class={filter === f && !guide ? 'chip on' : 'chip'} onClick={() => { setFilter(f); setGuide(false); }}>{f}</button>
         ))}
-        <span class="muted">sold · last 30 days</span>
+        <button class={guide ? 'chip on' : 'chip'} onClick={() => setGuide(!guide)}>?</button>
       </div>
-      <div class="sales-list">
-        {rows.map((s) => (
-          <div class="sale">
-            <span class={`mp mp-${s.marketplace.replace(/\s/g, '')}`}>{s.marketplace}</span>
-            <span class="sale-main">
-              <b>{s.kind === 'raw' ? `Raw · ${s.tier}` : `${s.company} ${s.grade}`}</b>
-              <small>{s.daysAgo === 0 ? 'today' : `${s.daysAgo}d ago`}{s.note ? ` · ${s.note}` : ''}</small>
-            </span>
-            <span class="sale-price">${s.price.toFixed(2)}</span>
-          </div>
-        ))}
-        {rows.length === 0 && <p class="muted">No recent {filter} sales.</p>}
-      </div>
+      {guide ? (
+        <div class="sales-list guide">
+          {TIERS.map((t) => <p><b>{t.id} · {t.label}</b>{t.desc}</p>)}
+          <p class="muted">Centering does not change raw condition, but it will matter when grading.</p>
+        </div>
+      ) : (
+        <div class="sales-list">
+          {rows.map((s) => (
+            <div class="sale">
+              <span class={`mp mp-${s.marketplace.replace(/\s/g, '')}`}>{s.marketplace}</span>
+              <span class="sale-main">
+                <b>{s.kind === 'raw' ? `Raw · ${s.tier}` : `${s.company} ${s.grade}`}</b>
+                <small>{s.daysAgo === 0 ? 'today' : `${s.daysAgo}d ago`}{s.note ? ` · ${s.note}` : ''}</small>
+              </span>
+              <span class="sale-price">${s.price.toFixed(2)}</span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -79,15 +90,16 @@ export function HagglePanel({ game, enc }: { game: GameState; enc: Encounter }) 
 /** Hidden values, for tuning only. Shown when debug is switched on. */
 export function DebugPanel({ game, enc }: { game: GameState; enc: Encounter }) {
   const c = enc.card.cond, s = enc.seller;
+  const pct = Math.round(centeringPct(c.centering));
   const rows: [string, string][] = [
     ['True value (this copy)', `$${enc.trueValue.toFixed(2)}`],
     ['NM market price', `$${game.market.nm[enc.card.cardId].toFixed(2)}`],
-    ['Condition', `${c.overall} (${tierOf(c.overall).id})`],
-    ['Centering / corners', `${c.centering} / ${c.corners}`],
-    ['Edges / surface', `${c.edges} / ${c.surface}`],
+    ['Wear / raw tier', `${c.wear} (${tierOf(c.wear).id})`],
+    ['Corners / edges / surface', `${c.corners} / ${c.edges} / ${c.surface}`],
+    ['Centering', `${c.centering} (${pct}/${100 - pct})`],
+    ['Grade potential', String(c.overall)],
     ['Seller type', `${s.bucket} (${Math.round((s.ask / enc.trueValue) * 100)}% ask)`],
-    ['Floor', `$${s.floor.toFixed(2)}`],
-    ['Walk-away line', `$${s.walkLine.toFixed(2)}`],
+    ['Floor / walk-away line', `$${s.floor.toFixed(2)} / $${s.walkLine.toFixed(2)}`],
     ['Counters used', `${s.counters} of ${s.patience}`],
     ['Customers left today', String(game.show?.customersLeft ?? 0)],
     ['Seed', String(game.seed)],

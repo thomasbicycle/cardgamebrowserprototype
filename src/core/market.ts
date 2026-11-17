@@ -17,7 +17,7 @@ export function initMarket(rng: Rng): MarketState {
 
 /** True market value of one raw copy: NM price scaled by its condition tier. */
 export function rawValue(nmPrice: number, cond: Condition): number {
-  return nmPrice * tierOf(cond.overall).rawMult;
+  return nmPrice * tierOf(cond.wear).rawMult;
 }
 
 /** Each card has its own fixed multiplier inside the configured range for a grade. */

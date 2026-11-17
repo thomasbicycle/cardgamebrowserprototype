@@ -4,7 +4,7 @@ export const CONFIG = {
   startingCash: 1000,
 
   show: {
-    dayLengthSec: 240,
+    dayLengthSec: 180,
     /** Hidden number of customers who will walk up in a day (inclusive range). */
     customers: [8, 14] as [number, number],
     /** Seconds between one customer leaving and the next arriving. */
@@ -13,30 +13,60 @@ export const CONFIG = {
 
   /** Near Mint raw value range per rarity, and how often each rarity walks up. */
   rarities: {
-    common: { label: 'Common', symbol: '●', value: [5, 20], w: 30, gradedShare: 0.15 },
-    uncommon: { label: 'Uncommon', symbol: '◆', value: [25, 70], w: 35, gradedShare: 0.25 },
-    rare: { label: 'Rare', symbol: '★', value: [90, 260], w: 25, gradedShare: 0.4 },
-    ultra: { label: 'Ultra Rare', symbol: '✦', value: [350, 900], w: 10, gradedShare: 0.5 },
+    common: { label: 'Common', symbol: '●', value: [5, 20], w: 30, gradedSales: [3, 5] },
+    uncommon: { label: 'Uncommon', symbol: '◆', value: [25, 70], w: 35, gradedSales: [5, 8] },
+    rare: { label: 'Rare', symbol: '★', value: [90, 260], w: 25, gradedSales: [8, 12] },
+    ultra: { label: 'Ultra Rare', symbol: '✦', value: [350, 900], w: 10, gradedSales: [10, 14] },
   },
 
   condition: {
-    /** Raw condition tiers by hidden true condition (1-10). rawMult is vs Near Mint price. */
+    /**
+     * Raw condition tiers by hidden wear score (1-10, worst of corners/edges/surface).
+     * rawMult is vs Near Mint price. Centering does not change the raw tier, only the grade.
+     */
     tiers: [
-      { id: 'NM', label: 'Near Mint', min: 8, rawMult: 1 },
-      { id: 'LP', label: 'Lightly Played', min: 6, rawMult: 0.78 },
-      { id: 'MP', label: 'Moderately Played', min: 4.5, rawMult: 0.58 },
-      { id: 'HP', label: 'Heavily Played', min: 2.5, rawMult: 0.38 },
-      { id: 'DMG', label: 'Damaged', min: 0, rawMult: 0.2 },
+      { id: 'NM', label: 'Near Mint', min: 8, rawMult: 1, desc: 'Looks nearly unplayed. Crisp corners and clean edges, at most a few tiny flaws.' },
+      { id: 'LP', label: 'Lightly Played', min: 6, rawMult: 0.78, desc: 'A handful of minor flaws: light edge wear, small scuffs or scratches. Nothing severe.' },
+      { id: 'MP', label: 'Moderately Played', min: 4.5, rawMult: 0.58, desc: 'Moderate wear: clear edge whitening, scratching or scuffing, maybe a small crease.' },
+      { id: 'HP', label: 'Heavily Played', min: 2.5, rawMult: 0.38, desc: 'Major wear all over: heavy whitening, creases and many scratches, but still intact.' },
+      { id: 'DMG', label: 'Damaged', min: 0, rawMult: 0.2, desc: 'Beyond played: big creases, tears, stains or wear that hurts the card itself.' },
     ],
-    /** What walks up to the table: weighted buckets of true condition. */
+    /** What walks up to the table: weighted buckets of wear score. */
     distribution: [
-      { range: [9.5, 10], w: 8 },
-      { range: [8.5, 9.5], w: 24 },
+      { range: [9.5, 10], w: 10 },
+      { range: [8.5, 9.5], w: 22 },
       { range: [8, 8.5], w: 14 },
       { range: [6, 8], w: 28 },
       { range: [4.5, 6], w: 14 },
       { range: [2.5, 4.5], w: 8 },
       { range: [1, 2.5], w: 4 },
+    ],
+    /** Corners, edges and surface stay within this many points of the worst one, so wear looks consistent. */
+    maxSpread: 1.2,
+    /** Centering score = 10 - |normal| * sd, floored at min. 9.5+ is 55/45 or better. */
+    centering: { sd: 0.9, min: 5.5 },
+  },
+
+  /**
+   * How much of each flaw is drawn at a given sub-score; values between rows are interpolated.
+   * Rows sit on the tier boundaries (8 = NM/LP, 6 = LP/MP, 4.5 = MP/HP, 2.5 = HP/DMG).
+   * nicks/cornerBlobs/scratches/scuffs/creases are counts; sizes are in card units (card is 250 wide).
+   */
+  flaws: {
+    anchors: [
+      { cond: 10, nicks: 0, nickLen: 0.8, nickDepth: 0.4, cornerBlobs: 0, cornerSize: 0.5, scratches: 0, scratchLen: 8, scratchOp: 0.2, scuffs: 0, creases: 0 },
+      { cond: 9.5, nicks: 1, nickLen: 0.9, nickDepth: 0.45, cornerBlobs: 0.5, cornerSize: 0.6, scratches: 0.5, scratchLen: 10, scratchOp: 0.22, scuffs: 0, creases: 0 },
+      { cond: 8, nicks: 5, nickLen: 1.3, nickDepth: 0.6, cornerBlobs: 3, cornerSize: 0.9, scratches: 2, scratchLen: 16, scratchOp: 0.28, scuffs: 0.3, creases: 0 },
+      { cond: 6, nicks: 20, nickLen: 3, nickDepth: 1.1, cornerBlobs: 9, cornerSize: 1.9, scratches: 5, scratchLen: 30, scratchOp: 0.4, scuffs: 2, creases: 0 },
+      { cond: 4.5, nicks: 36, nickLen: 4.5, nickDepth: 1.4, cornerBlobs: 14, cornerSize: 2.6, scratches: 10, scratchLen: 55, scratchOp: 0.5, scuffs: 4, creases: 0.6 },
+      { cond: 2.5, nicks: 70, nickLen: 7.5, nickDepth: 2.2, cornerBlobs: 24, cornerSize: 4, scratches: 16, scratchLen: 85, scratchOp: 0.6, scuffs: 7, creases: 2.5 },
+      { cond: 1, nicks: 110, nickLen: 11, nickDepth: 3.2, cornerBlobs: 36, cornerSize: 6, scratches: 24, scratchLen: 120, scratchOp: 0.7, scuffs: 10, creases: 4 },
+    ],
+    /** Damaged cards always get at least one of these, more as wear drops toward 1. */
+    structural: [
+      { id: 'bigCrease', w: 3 },
+      { id: 'tear', w: 2 },
+      { id: 'stain', w: 2 },
     ],
   },
 
@@ -66,8 +96,11 @@ export const CONFIG = {
     ],
     /** Hidden floor as a fraction of the ask (low = drops a lot, high = barely budges). */
     floorFracOfAsk: [0.6, 0.97] as [number, number],
-    /** Walk-away line = floor - this fraction of true value. */
+    /** Walk-away line = floor - this fraction of true value (or the dollar gap below, if larger). */
     walkLineFracOfTrue: 0.2,
+    minWalkGapDollars: 4,
+    /** Cheap cards: sellers think in dollars. Below this ask, the floor is also at least this many dollars under the ask. */
+    cheap: { askBelow: 20, floorDropDollars: [3, 6] as [number, number] },
     /** Counters a seller will make before leaving (inclusive range). */
     patience: [3, 4] as [number, number],
     /** Each counter closes this fraction of the gap between current ask and floor. */
@@ -85,9 +118,9 @@ export const CONFIG = {
   ],
 
   sales: {
-    count: [14, 22] as [number, number],
     lookbackDays: 30,
-    rawTierWeights: { NM: 35, LP: 25, MP: 12, HP: 6, DMG: 3 } as Record<string, number>,
+    /** Raw sales generated per condition, so every condition filter has at least 5 comps. */
+    rawPerTier: { NM: [6, 10], LP: [5, 8], MP: [5, 7], HP: [5, 6], DMG: [5, 6] } as Record<string, [number, number]>,
     gradeWeights: { 10: 6, 9: 14, 8: 8, 7: 4, 6: 2, 5: 1 } as Record<number, number>,
     outlierChance: 0.14,
     outliers: [

@@ -12,7 +12,7 @@ export function Title() {
   return (
     <div class="screen center">
       <h1>Card Show<br />Hustle</h1>
-      <p class="muted">Buy low. Trust your eye. Prototype build · Milestone 1</p>
+      <p class="muted">Buy low. Trust your eye. Prototype build · Milestone 1.1</p>
       <button class="btn primary big" onClick={() => newGame(seed)}>New game</button>
       <label class="field">Seed (optional, repeats a run)
         <input value={seed} onInput={(e) => setSeed((e.target as HTMLInputElement).value)} placeholder="random" />
@@ -119,7 +119,7 @@ export function DayEnd({ game }: { game: GameState }) {
           const d = b.trueValue - b.paid;
           return (
             <div class="recap-row">
-              <span>{cardDef(b.cardId).name}</span>
+              <span>{cardDef(b.cardId).name} <i class="tier">{b.tier}</i></span>
               <span class="muted">paid {money(b.paid)}</span>
               <span>worth {money(b.trueValue)}</span>
               <b class={d >= 0 ? 'pos' : 'neg'}>{d >= 0 ? '+' : '−'}{money(Math.abs(d))}</b>
