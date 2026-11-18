@@ -1,9 +1,9 @@
 import { CONFIG } from '../config';
 import type { TierId } from '../config';
-import { tierId, type CardInstance } from './condition';
+import { tierId, type CardInstance, type Condition } from './condition';
 import { gradedValue, initMarket, rawValue, type MarketState } from './market';
 import { Rng, hashSeed } from './rng';
-import { generateSales, type Focus, type Sale } from './sales';
+import { compPrice, generateSales, type Focus, type Sale } from './sales';
 import { generateEncounter, makeOffer, passEncounter, type Encounter } from './seller';
 
 /** A card sitting at a grading company. */
@@ -100,14 +100,40 @@ export function showDayOn(cal: number): number {
 }
 export const shortDay = (day: number) => `Wk ${weekOf(day)} ${dayName(day).slice(0, 3)}`;
 
-export function salesFor(state: GameState, cardId: string, focus?: Focus[]): Sale[] {
-  return generateSales(state.seed, cardId, calendarDay(state.day), () => state.market.nm[cardId], focus);
+const salesCache = new Map<string, Sale[]>();
+
+/**
+ * Recent sold listings for a card. One history per weekend (re-rolled each week, when prices will move in
+ * Milestone 4); on Sunday every sale is a day older. Cached because inventory rows price cards on every tick.
+ * Callers must not mutate the returned array.
+ */
+export function salesFor(state: GameState, cardId: string, focus: Focus[] = []): Sale[] {
+  const sat = state.day - (state.day % 2);
+  const nm = state.market.nm[cardId];
+  const key = `${state.seed}|${cardId}|${state.day}|${nm}|${focus.map((f) => `${f.company}${f.grade}`).join(',')}`;
+  let sales = salesCache.get(key);
+  if (!sales) {
+    if (salesCache.size > 400) salesCache.clear();
+    sales = generateSales(state.seed, cardId, calendarDay(sat), () => nm, focus, state.day - sat);
+    salesCache.set(key, sales);
+  }
+  return sales;
 }
 
-/** Hidden true market value of an owned copy right now, raw or slabbed. */
+/** True value of a raw copy: the comp from recent sales in its condition. */
+export function rawMarketValue(state: GameState, cardId: string, cond: Condition): number {
+  const tier = tierId(cond.wear);
+  return compPrice(salesFor(state, cardId), (s) => s.kind === 'raw' && s.tier === tier) ?? rawValue(state.market.nm[cardId], cond);
+}
+
+/** Hidden true market value of an owned copy right now, raw or slabbed: the comp for its condition or slab. */
 export function marketValue(state: GameState, o: OwnedCard): number {
-  const nm = state.market.nm[o.card.cardId];
-  return o.slab ? gradedValue(state.seed, o.card.cardId, nm, o.slab.grade, o.slab.company) : rawValue(nm, o.card.cond);
+  const id = o.card.cardId;
+  const s = o.slab;
+  if (!s) return rawMarketValue(state, id, o.card.cond);
+  const name = CONFIG.grading.companies.find((c) => c.id === s.company)?.name;
+  return compPrice(salesFor(state, id, [{ company: s.company, grade: s.grade }]), (x) => x.company === name && x.grade === s.grade)
+    ?? gradedValue(state.seed, id, state.market.nm[id], s.grade, s.company);
 }
 
 /** What the wholesale buyer pays on the spot. Whole dollars, never less than $1. */
@@ -163,7 +189,7 @@ export function reduce(state: GameState, action: Action): void {
       show.nextIn -= action.dt;
       if (show.nextIn <= 0) {
         show.customersLeft--;
-        show.encounter = generateEncounter(rng, state.market, state.cash, state.nextUid++);
+        show.encounter = generateEncounter(rng, (id, cond) => rawMarketValue(state, id, cond), state.cash, state.nextUid++);
         state.log.seen++;
       }
       break;

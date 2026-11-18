@@ -25,43 +25,45 @@ export const CONFIG = {
      * rawMult is vs Near Mint price. Centering does not change the raw tier, only the grade.
      */
     tiers: [
-      { id: 'NM', label: 'Near Mint', min: 8, rawMult: 1, desc: 'Looks nearly unplayed. Crisp corners and clean edges, at most a few tiny flaws.' },
-      { id: 'LP', label: 'Lightly Played', min: 6, rawMult: 0.78, desc: 'A handful of minor flaws: light edge wear, small scuffs or scratches. Nothing severe.' },
-      { id: 'MP', label: 'Moderately Played', min: 4.5, rawMult: 0.58, desc: 'Moderate wear: clear edge whitening, scratching or scuffing, maybe a small crease.' },
-      { id: 'HP', label: 'Heavily Played', min: 2.5, rawMult: 0.38, desc: 'Major wear all over: heavy whitening, creases and many scratches, but still intact.' },
-      { id: 'DMG', label: 'Damaged', min: 0, rawMult: 0.2, desc: 'Beyond played: big creases, tears, stains or wear that hurts the card itself.' },
+      { id: 'NM', label: 'Near Mint', min: 8, rawMult: 1, desc: 'Looks unplayed. Crisp corners and clean edges, one or two tiny marks at most.' },
+      { id: 'LP', label: 'Lightly Played', min: 6, rawMult: 0.78, desc: 'Very light play: a few tiny nicks or marks (fewer than 5). No creases.' },
+      { id: 'MP', label: 'Moderately Played', min: 4.5, rawMult: 0.58, desc: 'A step below LP: more edge nicks and corner whitening, a few light scratches. No creases.' },
+      { id: 'HP', label: 'Heavily Played', min: 2.5, rawMult: 0.38, desc: 'Heavy whitening, light scratching, or one or two very small creases. Still intact.' },
+      { id: 'DMG', label: 'Damaged', min: 0, rawMult: 0.2, desc: 'Anything worse: big creases, tears, stains or extreme wear.' },
     ],
-    /** What walks up to the table: weighted buckets of wear score. */
-    distribution: [
-      { range: [9.5, 10], w: 10 },
-      { range: [8.5, 9.5], w: 22 },
-      { range: [8, 8.5], w: 14 },
-      { range: [6, 8], w: 28 },
-      { range: [4.5, 6], w: 14 },
-      { range: [2.5, 4.5], w: 8 },
-      { range: [1, 2.5], w: 4 },
-    ],
-    /** Corners, edges and surface stay within this many points of the worst one, so wear looks consistent. */
-    maxSpread: 1.2,
+    /** Share of walk-up cards in each raw tier (weights, need not sum to 100). Wear is spread evenly inside a tier. */
+    distribution: { NM: 40, LP: 25, MP: 15, HP: 10, DMG: 10 } as Record<TierId, number>,
+    /**
+     * Corners, edges and surface stay within this many points of the worst one.
+     * Worn cards spread wider, so a Heavily Played card is usually bad in one way (whitening OR scratches OR creases), not all.
+     */
+    spread: { base: 1.2, perPointBelow8: 0.6 },
     /** Centering score = 10 - |normal| * sd, floored at min. 9.5+ is 55/45 or better. */
     centering: { sd: 0.9, min: 5.5 },
   },
 
   /**
    * How much of each flaw is drawn at a given sub-score; values between rows are interpolated.
-   * Rows sit on the tier boundaries (8 = NM/LP, 6 = LP/MP, 4.5 = MP/HP, 2.5 = HP/DMG).
+   * Paired rows (6 / 5.99, 4.5 / 4.49, 2.5 / 2.49) make each tier a clear step from the one above.
    * nicks/cornerBlobs/scratches/scuffs/creases are counts; sizes are in card units (card is 250 wide).
    */
   flaws: {
     anchors: [
       { cond: 10, nicks: 0, nickLen: 0.8, nickDepth: 0.4, cornerBlobs: 0, cornerSize: 0.5, scratches: 0, scratchLen: 8, scratchOp: 0.2, scuffs: 0, creases: 0 },
-      { cond: 9.5, nicks: 1, nickLen: 0.9, nickDepth: 0.45, cornerBlobs: 0.5, cornerSize: 0.6, scratches: 0.5, scratchLen: 10, scratchOp: 0.22, scuffs: 0, creases: 0 },
-      { cond: 8, nicks: 5, nickLen: 1.3, nickDepth: 0.6, cornerBlobs: 3, cornerSize: 0.9, scratches: 2, scratchLen: 16, scratchOp: 0.28, scuffs: 0.3, creases: 0 },
-      { cond: 6, nicks: 20, nickLen: 3, nickDepth: 1.1, cornerBlobs: 9, cornerSize: 1.9, scratches: 5, scratchLen: 30, scratchOp: 0.4, scuffs: 2, creases: 0 },
-      { cond: 4.5, nicks: 36, nickLen: 4.5, nickDepth: 1.4, cornerBlobs: 14, cornerSize: 2.6, scratches: 10, scratchLen: 55, scratchOp: 0.5, scuffs: 4, creases: 0.25 },
-      { cond: 2.5, nicks: 62, nickLen: 6.8, nickDepth: 2, cornerBlobs: 22, cornerSize: 3.6, scratches: 15, scratchLen: 80, scratchOp: 0.58, scuffs: 6, creases: 1.1 },
-      { cond: 1, nicks: 110, nickLen: 11, nickDepth: 3.2, cornerBlobs: 36, cornerSize: 6, scratches: 24, scratchLen: 120, scratchOp: 0.7, scuffs: 10, creases: 4 },
+      { cond: 9.5, nicks: 0.4, nickLen: 0.9, nickDepth: 0.45, cornerBlobs: 0.2, cornerSize: 0.6, scratches: 0.2, scratchLen: 8, scratchOp: 0.2, scuffs: 0, creases: 0 },
+      { cond: 8, nicks: 1.2, nickLen: 1.2, nickDepth: 0.55, cornerBlobs: 0.6, cornerSize: 0.8, scratches: 0.4, scratchLen: 12, scratchOp: 0.24, scuffs: 0, creases: 0 },
+      { cond: 6, nicks: 2.4, nickLen: 1.8, nickDepth: 0.75, cornerBlobs: 1.2, cornerSize: 1.1, scratches: 0.8, scratchLen: 16, scratchOp: 0.3, scuffs: 0.2, creases: 0 },
+      { cond: 5.99, nicks: 3.5, nickLen: 2.2, nickDepth: 0.85, cornerBlobs: 1.8, cornerSize: 1.3, scratches: 1.2, scratchLen: 20, scratchOp: 0.33, scuffs: 0.4, creases: 0 },
+      { cond: 4.5, nicks: 6, nickLen: 3.2, nickDepth: 1.1, cornerBlobs: 3, cornerSize: 1.7, scratches: 2, scratchLen: 26, scratchOp: 0.38, scuffs: 0.8, creases: 0 },
+      { cond: 4.49, nicks: 10, nickLen: 7, nickDepth: 1.8, cornerBlobs: 5, cornerSize: 2.6, scratches: 3, scratchLen: 28, scratchOp: 0.4, scuffs: 1.2, creases: 0.5 },
+      { cond: 2.5, nicks: 14, nickLen: 10, nickDepth: 2.2, cornerBlobs: 7, cornerSize: 3.2, scratches: 4.5, scratchLen: 34, scratchOp: 0.44, scuffs: 2, creases: 1.6 },
+      { cond: 2.49, nicks: 18, nickLen: 11, nickDepth: 2.4, cornerBlobs: 9, cornerSize: 3.6, scratches: 6, scratchLen: 45, scratchOp: 0.5, scuffs: 3, creases: 1.6 },
+      { cond: 1, nicks: 45, nickLen: 14, nickDepth: 3.2, cornerBlobs: 20, cornerSize: 5.5, scratches: 14, scratchLen: 90, scratchOp: 0.65, scuffs: 7, creases: 3 },
     ],
+    /** Hard cap on whitening + scratch + scuff marks (front and back together) per tier. */
+    maxMarks: { NM: 2, LP: 4, MP: 9 } as Partial<Record<TierId, number>>,
+    /** Small creases (Heavily Played and worse): length range in card units, and at most this many below Damaged. */
+    smallCrease: { len: [8, 20] as [number, number], maxHP: 2 },
     /** Share of cards whose wear is mostly on the back, so the front looks clean until you flip it. */
     backHeavyChance: 0.4,
     /** Chance a scratch / scuff / small whitening mark shows on the front: [normal card, back-heavy card]. */
@@ -129,14 +131,21 @@ export const CONFIG = {
   },
 
   marketplaces: [
-    { id: 'ebuy', name: 'eBuy', w: 50, bias: 1.0, noise: 0.1, raw: true, minPrice: 0 },
-    { id: 'fanatix', name: 'Fanatix', w: 20, bias: 1.04, noise: 0.07, raw: true, minPrice: 0 },
-    { id: 'altt', name: 'Altt', w: 18, bias: 1.06, noise: 0.06, raw: false, minPrice: 50 },
-    { id: 'gavel', name: 'Golden Gavel', w: 12, bias: 1.12, noise: 0.12, raw: false, minPrice: 150 },
+    /** bias = typical price vs the market, noise = std-dev of the log price. Kept small: sales sit close to true value. */
+    { id: 'ebuy', name: 'eBuy', w: 50, bias: 1.0, noise: 0.07, raw: true, minPrice: 0 },
+    { id: 'fanatix', name: 'Fanatix', w: 20, bias: 1.0, noise: 0.06, raw: true, minPrice: 0 },
+    { id: 'altt', name: 'Altt', w: 18, bias: 1.01, noise: 0.05, raw: false, minPrice: 50 },
+    { id: 'gavel', name: 'Golden Gavel', w: 12, bias: 1.02, noise: 0.07, raw: false, minPrice: 150 },
   ],
 
   sales: {
     lookbackDays: 30,
+    /**
+     * True value of a copy = the wholesaler comp for its condition (or slab): average the `last` most recent
+     * clean sales (no auction or bad-listing outliers), then move `recentWeight` of the way to the newest one.
+     * e.g. $375 (newest), $290, $325 -> average $330 -> comp $352.50.
+     */
+    comp: { last: 3, recentWeight: 0.5 },
     /** Raw sales generated per condition, so every condition filter has at least 5 comps. */
     rawPerTier: { NM: [6, 10], LP: [5, 8], MP: [5, 7], HP: [5, 6], DMG: [5, 6] } as Record<string, [number, number]>,
     gradeWeights: { 10: 6, 9: 14, 8: 8, 7: 4, 6: 2, 5: 1 } as Record<number, number>,

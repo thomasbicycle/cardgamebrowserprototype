@@ -32,7 +32,7 @@ export function conditionFromWear(rng: Rng, wearScore: number, centeringScore?: 
   const keys = ['corners', 'edges', 'surface'] as const;
   const limiting = new Set<string>([rng.pick(keys)]);
   if (rng.chance(0.4)) limiting.add(rng.pick(keys));
-  const room = Math.min(10 - wear, C.maxSpread);
+  const room = Math.min(10 - wear, maxSpread(wear));
   const sub = (k: string) => (limiting.has(k) ? wear : r2(wear + room * Math.pow(rng.next(), 1.5)));
   const corners = sub('corners'), edges = sub('edges'), surface = sub('surface');
   const rolled = r2(clamp(10 - Math.abs(rng.normal()) * C.centering.sd, C.centering.min, 10));
@@ -40,9 +40,18 @@ export function conditionFromWear(rng: Rng, wearScore: number, centeringScore?: 
   return { overall: r2(Math.min(wear, centering)), wear, centering, corners, edges, surface };
 }
 
+/** How far the better sub-scores may sit above the worst one. */
+export function maxSpread(wear: number): number {
+  const S = CONFIG.condition.spread;
+  return S.base + Math.max(0, 8 - wear) * S.perPointBelow8;
+}
+
+/** Pick a raw tier by its configured share, then a wear score evenly inside that tier. */
 export function rollCondition(rng: Rng): Condition {
-  const b = rng.weighted(CONFIG.condition.distribution);
-  return conditionFromWear(rng, rng.range(b.range[0], b.range[1]));
+  const T = CONFIG.condition.tiers;
+  const t = rng.weighted(T.map((x, k) => ({ k, w: CONFIG.condition.distribution[x.id as TierId] }))).k;
+  const lo = Math.max(1, T[t].min), hi = t === 0 ? 10 : T[t - 1].min - 0.01;
+  return conditionFromWear(rng, rng.range(lo, hi));
 }
 
 export function tierOf(wear: number) {
@@ -181,8 +190,16 @@ export function generateFlaws(card: CardInstance): Flaws {
   };
   const creases: Crease[] = [];
   const tier = tierId(cond.wear);
-  const small = count(at(cond.surface, 'creases'));
-  for (let k = small; k > 0; k--) creases.push(crease(rng.range(15, 45), 0.9));
+  const SC = F.smallCrease;
+  const small = Math.min(count(at(cond.surface, 'creases')), tier === 'DMG' ? Infinity : SC.maxHP);
+  for (let k = small; k > 0; k--) creases.push(crease(rng.range(SC.len[0], SC.len[1]), 0.9));
+
+  // Keep the better tiers honest: never more marks than the tier allows.
+  const cap = F.maxMarks[tier];
+  if (cap !== undefined) {
+    const lists = [whitening, scratches, scuffs] as unknown[][];
+    while (lists.reduce((n, l) => n + l.length, 0) > cap) lists.reduce((a, b) => (b.length > a.length ? b : a)).pop();
+  }
 
   // Damaged: structural problems no other tier has.
   const tears: Pt[][] = [];

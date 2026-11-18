@@ -1,7 +1,6 @@
 import { CONFIG } from '../config';
 import { CARDS } from './cards';
-import { rollCondition, type CardInstance } from './condition';
-import { rawValue, type MarketState } from './market';
+import { rollCondition, type CardInstance, type Condition } from './condition';
 import type { Rng } from './rng';
 
 export interface Seller {
@@ -65,14 +64,15 @@ const usd = (n: number) => `$${Math.round(n).toLocaleString('en-US')}`;
 const fill = (s: string, v: { card?: string; ask?: number; offer?: number; worth?: number }) =>
   s.replace('{card}', v.card ?? '').replace('{ask}', usd(v.ask ?? 0)).replace('{offer}', usd(v.offer ?? 0)).replace('{worth}', usd(v.worth ?? 0));
 
-export function generateEncounter(rng: Rng, market: MarketState, cash: number, uid: number): Encounter {
+/** `valueOf` prices a raw copy (the comp for its condition); the seller anchors on it. */
+export function generateEncounter(rng: Rng, valueOf: (cardId: string, cond: Condition) => number, cash: number, uid: number): Encounter {
   const S = CONFIG.seller;
   let best: Encounter | null = null;
   for (let attempt = 0; attempt <= S.affordRerolls; attempt++) {
     const rarity = rng.weighted(Object.entries(CONFIG.rarities).map(([id, r]) => ({ id, w: r.w }))).id;
     const def = rng.pick(CARDS.filter((c) => c.rarity === rarity));
     const card: CardInstance = { uid, cardId: def.id, seed: rng.int(1, 2 ** 31 - 1), cond: rollCondition(rng) };
-    const trueValue = rawValue(market.nm[def.id], card.cond);
+    const trueValue = valueOf(def.id, card.cond);
     const bucket = rng.weighted(S.askBuckets);
     const ask = Math.max(1, Math.round(trueValue * rng.range(bucket.range[0], bucket.range[1])));
     let floor = ask * rng.range(S.floorFracOfAsk[0], S.floorFracOfAsk[1]);

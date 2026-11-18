@@ -1,15 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import { CONFIG } from '../src/config';
-import { conditionFromWear,generateFlaws, rollCondition, tierId } from '../src/core/condition';
-import { calendarDay, createGame, marketValue, reduce, rollGrade, salesFor, showDayOn, wholesaleValue, type Action, type GameState } from '../src/core/game';
-import { initMarket } from '../src/core/market';
+import { conditionFromWear, generateFlaws, maxSpread, rollCondition, tierId } from '../src/core/condition';
+import { calendarDay, createGame, marketValue, rawMarketValue, reduce, rollGrade, salesFor, showDayOn, wholesaleValue, type Action, type GameState } from '../src/core/game';
+import { initMarket, rawValue } from '../src/core/market';
+import { compPrice, type Sale } from '../src/core/sales';
 import { Rng } from '../src/core/rng';
 import { generateEncounter, makeOffer } from '../src/core/seller';
 
 const encounters = (n: number, seed = 7) => {
   const rng = new Rng(seed);
   const market = initMarket(rng);
-  return { rng, list: Array.from({ length: n }, (_, i) => generateEncounter(rng, market, 1e9, i)) };
+  return { rng, list: Array.from({ length: n }, (_, i) => generateEncounter(rng, (id, c) => rawValue(market.nm[id], c), 1e9, i)) };
 };
 
 describe('rng', () => {
@@ -26,7 +27,7 @@ describe('condition', () => {
       const c = rollCondition(rng);
       expect(c.wear).toBeCloseTo(Math.min(c.corners, c.edges, c.surface), 5);
       expect(c.overall).toBeCloseTo(Math.min(c.wear, c.centering), 5);
-      expect(Math.max(c.corners, c.edges, c.surface) - c.wear).toBeLessThanOrEqual(CONFIG.condition.maxSpread + 0.01);
+      expect(Math.max(c.corners, c.edges, c.surface) - c.wear).toBeLessThanOrEqual(maxSpread(c.wear) + 0.01);
       expect(c.overall).toBeGreaterThanOrEqual(1);
       expect(c.overall).toBeLessThanOrEqual(10);
     }
@@ -55,6 +56,25 @@ describe('condition', () => {
     }
     const card = mk(7);
     expect(generateFlaws(card)).toEqual(generateFlaws(card));
+  });
+  it('walk-ups follow the tier shares', () => {
+    const rng = new Rng(11);
+    const n = 6000, seen: Record<string, number> = {};
+    for (let i = 0; i < n; i++) { const t = tierId(rollCondition(rng).wear); seen[t] = (seen[t] ?? 0) + 1; }
+    const D = CONFIG.condition.distribution, total = Object.values(D).reduce((a, b) => a + b, 0);
+    for (const [t, w] of Object.entries(D)) expect(Math.abs(seen[t] / n - w / total)).toBeLessThan(0.02);
+  });
+  it('better tiers stay clean: mark caps, no creases above HP, at most two small ones in HP', () => {
+    const rng = new Rng(12);
+    for (let i = 0; i < 400; i++) {
+      const cond = rollCondition(rng);
+      const f = generateFlaws({ uid: i, cardId: 'pebblit', seed: rng.int(1, 1e9), cond });
+      const tier = tierId(cond.wear);
+      const cap = CONFIG.flaws.maxMarks[tier];
+      if (cap !== undefined) expect(f.whitening.length + f.scratches.length + f.scuffs.length).toBeLessThanOrEqual(cap);
+      if (tier === 'NM' || tier === 'LP' || tier === 'MP') expect(f.creases.length).toBe(0);
+      if (tier === 'HP') expect(f.creases.length).toBeLessThanOrEqual(2);
+    }
   });
 });
 
@@ -150,6 +170,37 @@ describe('sales', () => {
     const median = ratios[Math.floor(ratios.length / 2)];
     expect(median).toBeGreaterThan(0.93);
     expect(median).toBeLessThan(1.1);
+  });
+});
+
+describe('true value comes from the comps', () => {
+  const sale = (price: number, daysAgo: number, note?: string): Sale =>
+    ({ price, daysAgo, note, kind: 'raw', tier: 'NM', marketplace: 'eBuy', title: '' });
+  it('averages the last 3 clean sales and leans toward the newest', () => {
+    // The wholesaler example: $375 (newest), $290, $325 -> $352.50.
+    expect(compPrice([sale(375, 1), sale(290, 3), sale(325, 6), sale(900, 9)], () => true)).toBeCloseTo(352.5, 5);
+    // Auctions and bad listings are skipped.
+    expect(compPrice([sale(120, 0, 'Auction · 31 bids'), sale(100, 1), sale(100, 2), sale(100, 3)], () => true)).toBeCloseTo(100, 5);
+    expect(compPrice([], () => true)).toBeNull();
+  });
+  it('raw value matches its condition comps, and clean sales sit close to it', () => {
+    const g = createGame(5);
+    const rng = new Rng(2);
+    for (const id of Object.keys(g.market.nm)) {
+      const cond = rollCondition(rng);
+      const v = rawMarketValue(g, id, cond);
+      const tier = tierId(cond.wear);
+      const sales = salesFor(g, id).filter((s) => s.tier === tier && !s.note);
+      expect(v).toBeCloseTo(compPrice(sales, () => true)!, 5);
+      for (const s of sales) expect(Math.abs(Math.log(s.price / v))).toBeLessThan(0.35);
+    }
+  });
+  it('one history per weekend: on Sunday every sale is a day older', () => {
+    const g = createGame(6);
+    const sat = salesFor(g, 'pebblit');
+    g.day = 1;
+    expect(salesFor(g, 'pebblit').map((s) => s.daysAgo)).toEqual(sat.map((s) => s.daysAgo + 1));
+    expect(salesFor(g, 'pebblit').map((s) => s.price)).toEqual(sat.map((s) => s.price));
   });
 });
 
