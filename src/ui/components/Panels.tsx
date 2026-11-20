@@ -29,7 +29,7 @@ export function SalesPanel({ game, cardId, focus, chip }: { game: GameState; car
       {guide ? (
         <div class="sales-list guide">
           {TIERS.map((t) => <p><b>{t.id} · {t.label}</b>{t.desc}</p>)}
-          <p class="muted">Centering does not change raw condition, but it will matter when grading.</p>
+          <p class="muted">Count marks on the front and back together: flip the card. Centering does not change raw condition, but it will matter when grading.</p>
         </div>
       ) : (
         <div class="sales-list">

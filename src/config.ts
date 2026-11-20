@@ -25,12 +25,17 @@ export const CONFIG = {
      * rawMult is vs Near Mint price. Centering does not change the raw tier, only the grade.
      */
     tiers: [
-      { id: 'NM', label: 'Near Mint', min: 8, rawMult: 1, desc: 'Looks unplayed. Crisp corners and clean edges, one or two tiny marks at most.' },
-      { id: 'LP', label: 'Lightly Played', min: 6, rawMult: 0.78, desc: 'Very light play: a few tiny nicks or marks (fewer than 5). No creases.' },
-      { id: 'MP', label: 'Moderately Played', min: 4.5, rawMult: 0.58, desc: 'A step below LP: more edge nicks and corner whitening, a few light scratches. No creases.' },
-      { id: 'HP', label: 'Heavily Played', min: 2.5, rawMult: 0.38, desc: 'Heavy whitening, light scratching, or one or two very small creases. Still intact.' },
+      { id: 'NM', label: 'Near Mint', min: 8, rawMult: 1, desc: 'Two tiny marks at most. Crisp corners, clean edges.' },
+      { id: 'LP', label: 'Lightly Played', min: 6, rawMult: 0.78, desc: '3 or 4 small marks: tiny edge nicks, corner dots or light scratches. No creases.' },
+      { id: 'MP', label: 'Moderately Played', min: 4.5, rawMult: 0.58, desc: '5 to 9 marks: edge nicks, corner whitening, scratches or scuffs. No creases.' },
+      { id: 'HP', label: 'Heavily Played', min: 2.5, rawMult: 0.38, desc: '10 or more marks: heavy whitening or scratching, maybe one or two very small creases. Still intact.' },
       { id: 'DMG', label: 'Damaged', min: 0, rawMult: 0.2, desc: 'Anything worse: big creases, tears, stains or extreme wear.' },
     ],
+    /**
+     * Marks per tier (whitening, scratches, scuffs; front and back together). This is what defines the tier
+     * on screen: count the marks and you know the condition. Ranges must not overlap.
+     */
+    marks: { NM: [0, 2], LP: [3, 4], MP: [5, 9], HP: [10, 16], DMG: [17, 40] } as Record<TierId, [number, number]>,
     /** Share of walk-up cards in each raw tier (weights, need not sum to 100). Wear is spread evenly inside a tier. */
     distribution: { NM: 40, LP: 25, MP: 15, HP: 10, DMG: 10 } as Record<TierId, number>,
     /**
@@ -43,25 +48,28 @@ export const CONFIG = {
   },
 
   /**
-   * How much of each flaw is drawn at a given sub-score; values between rows are interpolated.
-   * Paired rows (6 / 5.99, 4.5 / 4.49, 2.5 / 2.49) make each tier a clear step from the one above.
-   * nicks/cornerBlobs/scratches/scuffs/creases are counts; sizes are in card units (card is 250 wide).
+   * How big each flaw is at a given sub-score (how many is set by condition.marks); values between rows are
+   * interpolated. Paired rows (6 / 5.99, 4.5 / 4.49, 2.5 / 2.49) make each tier a clear step from the one above.
+   * Sizes are in card units (card is 250 wide); even the smallest stays visible when zoomed in. creases is a count.
    */
   flaws: {
     anchors: [
-      { cond: 10, nicks: 0, nickLen: 0.8, nickDepth: 0.4, cornerBlobs: 0, cornerSize: 0.5, scratches: 0, scratchLen: 8, scratchOp: 0.2, scuffs: 0, creases: 0 },
-      { cond: 9.5, nicks: 0.4, nickLen: 0.9, nickDepth: 0.45, cornerBlobs: 0.2, cornerSize: 0.6, scratches: 0.2, scratchLen: 8, scratchOp: 0.2, scuffs: 0, creases: 0 },
-      { cond: 8, nicks: 1.2, nickLen: 1.2, nickDepth: 0.55, cornerBlobs: 0.6, cornerSize: 0.8, scratches: 0.4, scratchLen: 12, scratchOp: 0.24, scuffs: 0, creases: 0 },
-      { cond: 6, nicks: 2.4, nickLen: 1.8, nickDepth: 0.75, cornerBlobs: 1.2, cornerSize: 1.1, scratches: 0.8, scratchLen: 16, scratchOp: 0.3, scuffs: 0.2, creases: 0 },
-      { cond: 5.99, nicks: 3.5, nickLen: 2.2, nickDepth: 0.85, cornerBlobs: 1.8, cornerSize: 1.3, scratches: 1.2, scratchLen: 20, scratchOp: 0.33, scuffs: 0.4, creases: 0 },
-      { cond: 4.5, nicks: 6, nickLen: 3.2, nickDepth: 1.1, cornerBlobs: 3, cornerSize: 1.7, scratches: 2, scratchLen: 26, scratchOp: 0.38, scuffs: 0.8, creases: 0 },
-      { cond: 4.49, nicks: 10, nickLen: 7, nickDepth: 1.8, cornerBlobs: 5, cornerSize: 2.6, scratches: 3, scratchLen: 28, scratchOp: 0.4, scuffs: 1.2, creases: 0.5 },
-      { cond: 2.5, nicks: 14, nickLen: 10, nickDepth: 2.2, cornerBlobs: 7, cornerSize: 3.2, scratches: 4.5, scratchLen: 34, scratchOp: 0.44, scuffs: 2, creases: 1.6 },
-      { cond: 2.49, nicks: 18, nickLen: 11, nickDepth: 2.4, cornerBlobs: 9, cornerSize: 3.6, scratches: 6, scratchLen: 45, scratchOp: 0.5, scuffs: 3, creases: 1.6 },
-      { cond: 1, nicks: 45, nickLen: 14, nickDepth: 3.2, cornerBlobs: 20, cornerSize: 5.5, scratches: 14, scratchLen: 90, scratchOp: 0.65, scuffs: 7, creases: 3 },
+      { cond: 10, nickLen: 4, nickDepth: 1.5, cornerSize: 2, scratchLen: 14, scratchOp: 0.5, creases: 0 },
+      { cond: 8, nickLen: 4.4, nickDepth: 1.6, cornerSize: 2.1, scratchLen: 15, scratchOp: 0.52, creases: 0 },
+      { cond: 6, nickLen: 5, nickDepth: 1.7, cornerSize: 2.3, scratchLen: 18, scratchOp: 0.55, creases: 0 },
+      { cond: 5.99, nickLen: 5.5, nickDepth: 1.8, cornerSize: 2.4, scratchLen: 22, scratchOp: 0.56, creases: 0 },
+      { cond: 4.5, nickLen: 6, nickDepth: 1.9, cornerSize: 2.6, scratchLen: 26, scratchOp: 0.58, creases: 0 },
+      { cond: 4.49, nickLen: 8, nickDepth: 2.1, cornerSize: 3, scratchLen: 28, scratchOp: 0.58, creases: 0.5 },
+      { cond: 2.5, nickLen: 11, nickDepth: 2.4, cornerSize: 3.4, scratchLen: 34, scratchOp: 0.6, creases: 1.6 },
+      { cond: 2.49, nickLen: 12, nickDepth: 2.6, cornerSize: 3.8, scratchLen: 45, scratchOp: 0.62, creases: 1.6 },
+      { cond: 1, nickLen: 15, nickDepth: 3.2, cornerSize: 5.5, scratchLen: 90, scratchOp: 0.7, creases: 3 },
     ],
-    /** Hard cap on whitening + scratch + scuff marks (front and back together) per tier. */
-    maxMarks: { NM: 2, LP: 4, MP: 9 } as Partial<Record<TierId, number>>,
+    /** Share of surface marks that are hazy scuffs rather than scratches. */
+    scuffShare: 0.25,
+    /** Minimum distance between marks (card units), so a few marks never merge into one. */
+    minGap: 9,
+    /** On NM to MP cards, at most this many marks sit on corners, one per corner (the rest go to edges), so none overlap. */
+    maxCornerMarks: 4,
     /** Small creases (Heavily Played and worse): length range in card units, and at most this many below Damaged. */
     smallCrease: { len: [8, 20] as [number, number], maxHP: 2 },
     /** Share of cards whose wear is mostly on the back, so the front looks clean until you flip it. */
@@ -69,7 +77,7 @@ export const CONFIG = {
     /** Chance a scratch / scuff / small whitening mark shows on the front: [normal card, back-heavy card]. */
     frontShare: { scratch: [0.7, 0.12], scuff: [0.6, 0.1], whitening: [0.3, 0.06] },
     /** Whitening bigger than this (card units) always shows on the front too: [normal, back-heavy]. */
-    frontWhiteningSize: { corner: [2, 4.5], edge: [1.5, 2.8] },
+    frontWhiteningSize: { corner: [3.2, 4.5], edge: [2.3, 2.8] },
     /** Damaged cards always get at least one of these, more as wear drops toward 1. */
     structural: [
       { id: 'bigCrease', w: 3 },

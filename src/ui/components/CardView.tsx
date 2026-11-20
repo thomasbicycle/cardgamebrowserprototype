@@ -47,6 +47,9 @@ export function CardView({ card, side, viewBox, nested }: Props) {
         <radialGradient id={`${id}scuff`}>
           <stop offset="0" stop-color="#fff" stop-opacity="0.9" /><stop offset="0.6" stop-color="#fff" stop-opacity="0.5" /><stop offset="1" stop-color="#fff" stop-opacity="0" />
         </radialGradient>
+        <radialGradient id={`${id}scuffD`}>
+          <stop offset="0" stop-color="#4a3f66" stop-opacity="0.55" /><stop offset="0.6" stop-color="#4a3f66" stop-opacity="0.3" /><stop offset="1" stop-color="#4a3f66" stop-opacity="0" />
+        </radialGradient>
         <radialGradient id={`${id}stain`}>
           <stop offset="0" stop-color="#5a3d14" stop-opacity="0.5" /><stop offset="0.75" stop-color="#5a3d14" stop-opacity="0.4" />
           <stop offset="0.9" stop-color="#3d2808" stop-opacity="0.55" /><stop offset="1" stop-color="#3d2808" stop-opacity="0" />
@@ -91,10 +94,14 @@ export function CardView({ card, side, viewBox, nested }: Props) {
           <ellipse cx={mx(b.x)} cy={b.y} rx={b.rx} ry={b.ry} fill={`url(#${id}stain)`} transform={`rotate(${b.rot} ${mx(b.x)} ${b.y})`} />
         ))}
         {flaws.scuffs.filter((s) => s.back === back).map((s) => (
-          <ellipse cx={mx(s.x)} cy={s.y} rx={s.rx} ry={s.ry} fill={`url(#${id}scuff)`} opacity={s.o} transform={`rotate(${s.rot} ${mx(s.x)} ${s.y})`} />
+          <ellipse cx={mx(s.x)} cy={s.y} rx={s.rx} ry={s.ry} fill={`url(#${id}${back ? 'scuff' : 'scuffD'})`} opacity={s.o} transform={`rotate(${s.rot} ${mx(s.x)} ${s.y})`} />
         ))}
         {flaws.scratches.filter((s) => s.back === back).map((s) => (
-          <line x1={mx(s.x1)} y1={s.y1} x2={mx(s.x2)} y2={s.y2} stroke="#fff" stroke-width={s.w} stroke-opacity={s.o} stroke-linecap="round" />
+          <g stroke-linecap="round">
+            {/* A faint dark edge so scratches read on the light front as well as the dark back. */}
+            <line x1={mx(s.x1) + 0.45} y1={s.y1 + 0.45} x2={mx(s.x2) + 0.45} y2={s.y2 + 0.45} stroke="#1c1630" stroke-width={s.w + 0.3} stroke-opacity={s.o * 0.45} />
+            <line x1={mx(s.x1)} y1={s.y1} x2={mx(s.x2)} y2={s.y2} stroke="#fff" stroke-width={s.w} stroke-opacity={s.o} />
+          </g>
         ))}
         {flaws.creases.map((c) => {
           const d = 'M' + c.pts.map(([x, y]) => `${mx(x)},${y}`).join('L');

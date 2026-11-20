@@ -1,6 +1,6 @@
 // Dev-only page (gallery.html): one sample card per condition, for tuning how flaws look.
 import { render } from 'preact';
-import { conditionFromWear, tierId } from '../core/condition';
+import { conditionFromWear, marksFor, tierId } from '../core/condition';
 import { Rng } from '../core/rng';
 import { CardView } from './components/CardView';
 import './styles.css';
@@ -14,7 +14,7 @@ render(
     {cards.flatMap((c) => (['back', 'front'] as const).map((side) => (
       <div style={{ textAlign: 'center', fontSize: '12px' }}>
         <CardView card={c} side={side} />
-        {tierId(c.cond.wear)} {c.cond.wear} {side}
+        {tierId(c.cond.wear)} {c.cond.wear} · {marksFor(c.cond.wear)} marks · {side}
       </div>
     )))}
   </div>,

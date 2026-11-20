@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { CONFIG } from '../src/config';
-import { conditionFromWear, generateFlaws, maxSpread, rollCondition, tierId } from '../src/core/condition';
+import { conditionFromWear, generateFlaws, marksFor, maxSpread, rollCondition, tierId } from '../src/core/condition';
 import { calendarDay, createGame, marketValue, rawMarketValue, reduce, rollGrade, salesFor, showDayOn, wholesaleValue, type Action, type GameState } from '../src/core/game';
 import { initMarket, rawValue } from '../src/core/market';
 import { compPrice, type Sale } from '../src/core/sales';
@@ -64,17 +64,28 @@ describe('condition', () => {
     const D = CONFIG.condition.distribution, total = Object.values(D).reduce((a, b) => a + b, 0);
     for (const [t, w] of Object.entries(D)) expect(Math.abs(seen[t] / n - w / total)).toBeLessThan(0.02);
   });
-  it('better tiers stay clean: mark caps, no creases above HP, at most two small ones in HP', () => {
+  it('counting marks gives the right tier; marks never merge; no creases above HP', () => {
     const rng = new Rng(12);
-    for (let i = 0; i < 400; i++) {
+    const ranges = Object.entries(CONFIG.condition.marks);
+    for (let i = 0; i < 1500; i++) {
       const cond = rollCondition(rng);
       const f = generateFlaws({ uid: i, cardId: 'pebblit', seed: rng.int(1, 1e9), cond });
       const tier = tierId(cond.wear);
-      const cap = CONFIG.flaws.maxMarks[tier];
-      if (cap !== undefined) expect(f.whitening.length + f.scratches.length + f.scuffs.length).toBeLessThanOrEqual(cap);
-      if (tier === 'NM' || tier === 'LP' || tier === 'MP') expect(f.creases.length).toBe(0);
+      const n = f.whitening.length + f.scratches.length + f.scuffs.length;
+      expect(n).toBe(marksFor(cond.wear));
+      // The only tier whose range holds this count is the card's own tier.
+      expect(ranges.filter(([, [lo, hi]]) => n >= lo && n <= hi).map(([t]) => t)).toEqual([tier]);
+      if (tier === 'NM' || tier === 'LP' || tier === 'MP') {
+        expect(f.creases.length).toBe(0);
+        const pts = [...f.whitening.map((w) => [w.x, w.y]), ...f.scratches.map((l) => [(l.x1 + l.x2) / 2, (l.y1 + l.y2) / 2]), ...f.scuffs.map((u) => [u.x, u.y])];
+        for (let j = 0; j < pts.length; j++) for (let k = j + 1; k < pts.length; k++) {
+          expect(Math.hypot(pts[j][0] - pts[k][0], pts[j][1] - pts[k][1])).toBeGreaterThanOrEqual(CONFIG.flaws.minGap - 1e-9);
+        }
+      }
       if (tier === 'HP') expect(f.creases.length).toBeLessThanOrEqual(2);
     }
+    // Gem-mint candidates are spotless.
+    expect(marksFor(9.6)).toBe(0);
   });
 });
 
